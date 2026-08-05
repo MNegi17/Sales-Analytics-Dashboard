@@ -6,28 +6,34 @@ import { useSalesStore } from '../../store/useSalesStore';
 
 // ─── Frozen column pixel widths ─────────────────────────────────────────────
 const COL_CATEGORY_W  = 160; // px – "Category" column
-const COL_STYLE_W     = 100; // px – "Style Count" column
+const COL_STYLE_W     = 100; // px – "Style Count" column (Myntra only)
 const COL_DIVISION_W  = 110; // px – "Division" column
 
 const LEFT_CATEGORY   = 0;
-const LEFT_STYLE      = LEFT_CATEGORY + COL_CATEGORY_W;   // 160
-const LEFT_DIVISION   = LEFT_STYLE    + COL_STYLE_W;      // 260
+const LEFT_STYLE      = LEFT_CATEGORY + COL_CATEGORY_W;   // 160 (Myntra only)
+const LEFT_DIVISION_MYNTRA = LEFT_STYLE + COL_STYLE_W;    // 260 (Myntra only)
+const LEFT_DIVISION_OTHER  = LEFT_CATEGORY + COL_CATEGORY_W; // 160 (For Amazon & Rest Channels without Style Count)
 
 const stickyStyle = (left: number, bg: string, zIndex = 20): React.CSSProperties => ({
   position: 'sticky',
   left,
   zIndex,
   background: bg,
-  boxShadow: left === LEFT_DIVISION ? '2px 0 4px -2px rgba(0,0,0,0.12)' : undefined,
+  boxShadow: (left === LEFT_DIVISION_MYNTRA || left === LEFT_DIVISION_OTHER) ? '2px 0 4px -2px rgba(0,0,0,0.12)' : undefined,
 });
 
-const TH_CATEGORY  = (bg: string): React.CSSProperties => ({ ...stickyStyle(LEFT_CATEGORY,  bg, 40), width: COL_CATEGORY_W,  minWidth: COL_CATEGORY_W });
-const TH_STYLE     = (bg: string): React.CSSProperties => ({ ...stickyStyle(LEFT_STYLE,     bg, 40), width: COL_STYLE_W,     minWidth: COL_STYLE_W });
-const TH_DIVISION  = (bg: string): React.CSSProperties => ({ ...stickyStyle(LEFT_DIVISION,  bg, 40), width: COL_DIVISION_W,  minWidth: COL_DIVISION_W, boxShadow: '3px 0 6px -3px rgba(0,0,0,0.15)' });
+// For Myntra (with Style Count)
+const TH_CATEGORY  = (bg: string): React.CSSProperties => ({ ...stickyStyle(LEFT_CATEGORY, bg, 40), width: COL_CATEGORY_W, minWidth: COL_CATEGORY_W });
+const TH_STYLE     = (bg: string): React.CSSProperties => ({ ...stickyStyle(LEFT_STYLE, bg, 40), width: COL_STYLE_W, minWidth: COL_STYLE_W });
+const TH_DIVISION_MYNTRA = (bg: string): React.CSSProperties => ({ ...stickyStyle(LEFT_DIVISION_MYNTRA, bg, 40), width: COL_DIVISION_W, minWidth: COL_DIVISION_W, boxShadow: '3px 0 6px -3px rgba(0,0,0,0.15)' });
 
-const TD_CATEGORY  = (bg: string): React.CSSProperties => ({ ...stickyStyle(LEFT_CATEGORY,  bg, 20), width: COL_CATEGORY_W,  minWidth: COL_CATEGORY_W });
-const TD_STYLE     = (bg: string): React.CSSProperties => ({ ...stickyStyle(LEFT_STYLE,     bg, 20), width: COL_STYLE_W,     minWidth: COL_STYLE_W });
-const TD_DIVISION  = (bg: string): React.CSSProperties => ({ ...stickyStyle(LEFT_DIVISION,  bg, 20), width: COL_DIVISION_W,  minWidth: COL_DIVISION_W, boxShadow: '3px 0 6px -3px rgba(0,0,0,0.15)' });
+const TD_CATEGORY  = (bg: string): React.CSSProperties => ({ ...stickyStyle(LEFT_CATEGORY, bg, 20), width: COL_CATEGORY_W, minWidth: COL_CATEGORY_W });
+const TD_STYLE     = (bg: string): React.CSSProperties => ({ ...stickyStyle(LEFT_STYLE, bg, 20), width: COL_STYLE_W, minWidth: COL_STYLE_W });
+const TD_DIVISION_MYNTRA = (bg: string): React.CSSProperties => ({ ...stickyStyle(LEFT_DIVISION_MYNTRA, bg, 20), width: COL_DIVISION_W, minWidth: COL_DIVISION_W, boxShadow: '3px 0 6px -3px rgba(0,0,0,0.15)' });
+
+// For Amazon & Rest Channels (WITHOUT Style Count)
+const TH_DIVISION_OTHER = (bg: string): React.CSSProperties => ({ ...stickyStyle(LEFT_DIVISION_OTHER, bg, 40), width: COL_DIVISION_W, minWidth: COL_DIVISION_W, boxShadow: '3px 0 6px -3px rgba(0,0,0,0.15)' });
+const TD_DIVISION_OTHER = (bg: string): React.CSSProperties => ({ ...stickyStyle(LEFT_DIVISION_OTHER, bg, 20), width: COL_DIVISION_W, minWidth: COL_DIVISION_W, boxShadow: '3px 0 6px -3px rgba(0,0,0,0.15)' });
 
 // Month & Calendar Helper Utilities
 const MONTH_NAMES = [
@@ -233,8 +239,8 @@ export const ExcelSheetView: React.FC<ExcelSheetViewProps> = ({
       {/* ── Toolbar ── */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col lg:flex-row items-center justify-between gap-4">
 
-        {/* Marketplace Tabs */}
-        <div className="flex items-center space-x-1.5 overflow-x-auto w-full lg:w-auto pb-1 lg:pb-0">
+        {/* Marketplace Tabs Container with extra bottom padding to separate slider */}
+        <div className="flex items-center space-x-1.5 overflow-x-auto w-full lg:w-auto pb-3 pt-1 scrollbar-thin">
           {Object.values(MARKETPLACE_CONFIGS).map(mp => {
             const isActive = mp.id === activeMarketplace;
             return (
@@ -375,7 +381,6 @@ export const ExcelSheetView: React.FC<ExcelSheetViewProps> = ({
           days={days}
           parsedMY={parsedMY}
           stats={filteredStats}
-          myntraStyleCounts={myntraStyleCounts}
           isExpandedGlobal={isExpandedGlobal}
         />
       )}
@@ -385,7 +390,6 @@ export const ExcelSheetView: React.FC<ExcelSheetViewProps> = ({
           parsedMY={parsedMY}
           stats={filteredStats}
           marketplaceName={currentConfig.name}
-          myntraStyleCounts={myntraStyleCounts}
         />
       )}
     </div>
@@ -393,7 +397,7 @@ export const ExcelSheetView: React.FC<ExcelSheetViewProps> = ({
 };
 
 // ============================================================================
-// MYNTRA SHEETS
+// MYNTRA SHEETS (WITH STYLE COUNT COLUMN)
 // ============================================================================
 function MyntraSheets({
   days, parsedMY, stats, myntraStyleCounts, isExpandedGlobal
@@ -476,7 +480,7 @@ function MyntraSheets({
               <tr>
                 <th style={{ ...TH_CATEGORY(HEADER_BG), padding: '6px 8px', borderRight: '1px solid #cbd5e1', borderBottom: '1px solid #94a3b8', fontSize: 11 }}>Category Level</th>
                 <th style={{ ...TH_STYLE(HEADER_BG),    padding: '6px 8px', borderRight: '1px solid #cbd5e1', borderBottom: '1px solid #94a3b8', fontSize: 11, textAlign: 'center' }}>Style Count</th>
-                <th style={{ ...TH_DIVISION(HEADER_BG), padding: '6px 8px', borderBottom: '1px solid #94a3b8', fontSize: 11 }}>Division</th>
+                <th style={{ ...TH_DIVISION_MYNTRA(HEADER_BG), padding: '6px 8px', borderBottom: '1px solid #94a3b8', fontSize: 11 }}>Division</th>
 
                 {days.map(d => {
                   const expanded = isDayExpanded(d);
@@ -503,7 +507,7 @@ function MyntraSheets({
               <tr>
                 <th style={{ ...TH_CATEGORY(GREY), padding: '5px 8px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #94a3b8', fontSize: 11, fontWeight: 700 }}>Category</th>
                 <th style={{ ...TH_STYLE(GREY),    padding: '5px 8px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #94a3b8', fontSize: 11, fontWeight: 700, textAlign: 'center' }}>Online Style</th>
-                <th style={{ ...TH_DIVISION(GREY), padding: '5px 8px', borderBottom: '2px solid #94a3b8', fontSize: 11, fontWeight: 700 }}>Division</th>
+                <th style={{ ...TH_DIVISION_MYNTRA(GREY), padding: '5px 8px', borderBottom: '2px solid #94a3b8', fontSize: 11, fontWeight: 700 }}>Division</th>
 
                 {days.map(d => {
                   const expanded = isDayExpanded(d);
@@ -537,7 +541,7 @@ function MyntraSheets({
                   <tr key={cat.name} style={{ borderBottom: '1px solid #e2e8f0' }}>
                     <td style={{ ...TD_CATEGORY(WHITE), padding: '5px 8px', borderRight: '1px solid #e2e8f0', fontSize: 11, fontWeight: 700, color: '#0f172a' }}>{cat.name}</td>
                     <td style={{ ...TD_STYLE(WHITE),    padding: '5px 8px', borderRight: '1px solid #e2e8f0', fontSize: 11, textAlign: 'center', color: '#475569' }}>{sc}</td>
-                    <td style={{ ...TD_DIVISION(WHITE), padding: '5px 8px', fontSize: 11, color: '#64748b' }}>{cat.division}</td>
+                    <td style={{ ...TD_DIVISION_MYNTRA(WHITE), padding: '5px 8px', fontSize: 11, color: '#64748b' }}>{cat.division}</td>
 
                     {days.map(d => {
                       const expanded = isDayExpanded(d);
@@ -564,7 +568,7 @@ function MyntraSheets({
               <tr style={{ borderTop: '2px solid #94a3b8', background: TOTAL_BG }}>
                 <td style={{ ...TD_CATEGORY(TOTAL_BG), padding: '6px 8px', borderRight: '1px solid #94a3b8', fontSize: 11, fontWeight: 800, color: '#0f172a' }}>Grand Total</td>
                 <td style={{ ...TD_STYLE(TOTAL_BG),    padding: '6px 8px', borderRight: '1px solid #94a3b8', fontSize: 11, textAlign: 'center', color: '#475569' }}>–</td>
-                <td style={{ ...TD_DIVISION(TOTAL_BG), padding: '6px 8px', fontSize: 11, color: '#475569' }}>–</td>
+                <td style={{ ...TD_DIVISION_MYNTRA(TOTAL_BG), padding: '6px 8px', fontSize: 11, color: '#475569' }}>–</td>
 
                 {days.map(d => {
                   const expanded = isDayExpanded(d);
@@ -609,7 +613,7 @@ function MyntraSheets({
               <tr>
                 <th style={{ ...TH_CATEGORY('#fce4d6'), padding: '6px 8px', borderRight: '1px solid #cbd5e1', borderBottom: '1px solid #94a3b8', fontSize: 11 }}>Category Level</th>
                 <th style={{ ...TH_STYLE('#fce4d6'),    padding: '6px 8px', borderRight: '1px solid #cbd5e1', borderBottom: '1px solid #94a3b8', fontSize: 11, textAlign: 'center' }}>Style Count</th>
-                <th style={{ ...TH_DIVISION('#fce4d6'), padding: '6px 8px', borderBottom: '1px solid #94a3b8', fontSize: 11 }}>Division</th>
+                <th style={{ ...TH_DIVISION_MYNTRA('#fce4d6'), padding: '6px 8px', borderBottom: '1px solid #94a3b8', fontSize: 11 }}>Division</th>
                 {days.map(d => {
                   const expanded = isDayExpanded(d);
                   const weekdayName = getRealWeekdayName(parsedMY.year, parsedMY.monthIndex, d);
@@ -625,7 +629,7 @@ function MyntraSheets({
               <tr>
                 <th style={{ ...TH_CATEGORY(GREY), padding: '5px 8px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #94a3b8', fontSize: 11, fontWeight: 700 }}>Category</th>
                 <th style={{ ...TH_STYLE(GREY),    padding: '5px 8px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #94a3b8', fontSize: 11, fontWeight: 700, textAlign: 'center' }}>Online Style</th>
-                <th style={{ ...TH_DIVISION(GREY), padding: '5px 8px', borderBottom: '2px solid #94a3b8', fontSize: 11, fontWeight: 700 }}>Division</th>
+                <th style={{ ...TH_DIVISION_MYNTRA(GREY), padding: '5px 8px', borderBottom: '2px solid #94a3b8', fontSize: 11, fontWeight: 700 }}>Division</th>
                 {days.map(d => {
                   const expanded = isDayExpanded(d);
                   const dateLabel = `${d} ${parsedMY.shortMonth}`;
@@ -655,7 +659,7 @@ function MyntraSheets({
                   <tr key={cat.name} style={{ borderBottom: '1px solid #e2e8f0' }}>
                     <td style={{ ...TD_CATEGORY(WHITE), padding: '5px 8px', borderRight: '1px solid #e2e8f0', fontSize: 11, fontWeight: 700, color: '#0f172a' }}>{cat.name}</td>
                     <td style={{ ...TD_STYLE(WHITE),    padding: '5px 8px', borderRight: '1px solid #e2e8f0', fontSize: 11, textAlign: 'center', color: '#475569' }}>{sc}</td>
-                    <td style={{ ...TD_DIVISION(WHITE), padding: '5px 8px', fontSize: 11, color: '#64748b' }}>{cat.division}</td>
+                    <td style={{ ...TD_DIVISION_MYNTRA(WHITE), padding: '5px 8px', fontSize: 11, color: '#64748b' }}>{cat.division}</td>
                     {days.map(d => {
                       const expanded = isDayExpanded(d);
                       const r = dm?.get(d);
@@ -678,7 +682,7 @@ function MyntraSheets({
               <tr style={{ borderTop: '2px solid #94a3b8', background: '#fce4d6' }}>
                 <td style={{ ...TD_CATEGORY('#fce4d6'), padding: '6px 8px', borderRight: '1px solid #94a3b8', fontSize: 11, fontWeight: 800, color: '#7f1d1d' }}>Grand Total New</td>
                 <td style={{ ...TD_STYLE('#fce4d6'),    padding: '6px 8px', borderRight: '1px solid #94a3b8', fontSize: 11, textAlign: 'center' }}>–</td>
-                <td style={{ ...TD_DIVISION('#fce4d6'), padding: '6px 8px', fontSize: 11 }}>–</td>
+                <td style={{ ...TD_DIVISION_MYNTRA('#fce4d6'), padding: '6px 8px', fontSize: 11 }}>–</td>
                 {days.map(d => {
                   const expanded = isDayExpanded(d);
                   if (expanded) {
@@ -711,15 +715,14 @@ function MyntraSheets({
 }
 
 // ============================================================================
-// AMAZON SHEETS
+// AMAZON SHEETS (WITHOUT STYLE COUNT COLUMN)
 // ============================================================================
 function AmazonSheets({
-  days, parsedMY, stats, myntraStyleCounts, isExpandedGlobal
+  days, parsedMY, stats, isExpandedGlobal
 }: {
   days: number[];
   parsedMY: ParsedMonthYear;
   stats: DailyCategoryStat[];
-  myntraStyleCounts: Record<string, number>;
   isExpandedGlobal: boolean;
 }) {
   const [dayExpandMap, setDayExpandMap] = useState<Record<number, boolean>>({});
@@ -778,22 +781,20 @@ function AmazonSheets({
       <div className={`rounded-xl border shadow-sm overflow-hidden ${isNew ? 'border-amber-200' : 'border-slate-200'}`}>
         <div className={`px-4 py-2.5 flex items-center justify-between ${isNew ? 'bg-amber-50 border-b border-amber-200' : 'bg-amber-50 border-b border-amber-200'}`}>
           <span className="font-extrabold text-xs text-amber-900 uppercase tracking-wide">{title}</span>
-          <span className="text-[11px] text-amber-700">Category · Style Count · Division → Frozen</span>
+          <span className="text-[11px] text-amber-700">Category · Division → Frozen</span>
         </div>
 
         <div className="overflow-auto max-h-[65vh]" style={{ position: 'relative' }}>
           <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: '100%' }}>
             <colgroup>
               <col style={{ width: COL_CATEGORY_W }} />
-              <col style={{ width: COL_STYLE_W }} />
               <col style={{ width: COL_DIVISION_W }} />
             </colgroup>
 
             <thead style={{ position: 'sticky', top: 0, zIndex: 30 }}>
               <tr>
                 <th style={{ ...TH_CATEGORY(hBg), padding: '6px 8px', borderRight: '1px solid #cbd5e1', borderBottom: '1px solid '+borderColor, fontSize: 11 }}>Category Level</th>
-                <th style={{ ...TH_STYLE(hBg),    padding: '6px 8px', borderRight: '1px solid #cbd5e1', borderBottom: '1px solid '+borderColor, fontSize: 11, textAlign: 'center' }}>Style Count</th>
-                <th style={{ ...TH_DIVISION(hBg), padding: '6px 8px', borderBottom: '1px solid '+borderColor, fontSize: 11 }}>Division</th>
+                <th style={{ ...TH_DIVISION_OTHER(hBg), padding: '6px 8px', borderBottom: '1px solid '+borderColor, fontSize: 11 }}>Division</th>
                 {days.map(d => {
                   const expanded = isDayExpanded(d);
                   const weekdayName = getRealWeekdayName(parsedMY.year, parsedMY.monthIndex, d);
@@ -817,8 +818,7 @@ function AmazonSheets({
               </tr>
               <tr>
                 <th style={{ ...TH_CATEGORY(GREY), padding: '5px 8px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid '+borderColor, fontSize: 11, fontWeight: 700 }}>Category</th>
-                <th style={{ ...TH_STYLE(GREY),    padding: '5px 8px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid '+borderColor, fontSize: 11, fontWeight: 700, textAlign: 'center' }}>Online Style</th>
-                <th style={{ ...TH_DIVISION(GREY), padding: '5px 8px', borderBottom: '2px solid '+borderColor, fontSize: 11, fontWeight: 700 }}>Division</th>
+                <th style={{ ...TH_DIVISION_OTHER(GREY), padding: '5px 8px', borderBottom: '2px solid '+borderColor, fontSize: 11, fontWeight: 700 }}>Division</th>
                 {days.map(d => {
                   const expanded = isDayExpanded(d);
                   const dateLabel = `${d} ${parsedMY.shortMonth}`;
@@ -840,7 +840,6 @@ function AmazonSheets({
 
             <tbody>
               {categories.map(cat => {
-                const sc = myntraStyleCounts[cat.name] ?? (cat as any).defaultMyntraStyleCount ?? 0;
                 const dm = lookup.get(cat.name);
                 let rowTotal = 0;
                 days.forEach(d => {
@@ -852,8 +851,7 @@ function AmazonSheets({
                 return (
                   <tr key={cat.name} style={{ borderBottom: '1px solid #e2e8f0' }}>
                     <td style={{ ...TD_CATEGORY(WHITE), padding: '5px 8px', borderRight: '1px solid #e2e8f0', fontSize: 11, fontWeight: 700, color: '#0f172a' }}>{cat.name}</td>
-                    <td style={{ ...TD_STYLE(WHITE),    padding: '5px 8px', borderRight: '1px solid #e2e8f0', fontSize: 11, textAlign: 'center', color: '#475569' }}>{sc}</td>
-                    <td style={{ ...TD_DIVISION(WHITE), padding: '5px 8px', fontSize: 11, color: '#64748b' }}>{cat.division}</td>
+                    <td style={{ ...TD_DIVISION_OTHER(WHITE), padding: '5px 8px', fontSize: 11, color: '#64748b' }}>{cat.division}</td>
                     {days.map(d => {
                       const expanded = isDayExpanded(d);
                       const r = dm?.get(d);
@@ -879,8 +877,7 @@ function AmazonSheets({
               })}
               <tr style={{ borderTop: '2px solid #94a3b8', background: TOTAL_BG }}>
                 <td style={{ ...TD_CATEGORY(TOTAL_BG), padding: '6px 8px', borderRight: '1px solid #94a3b8', fontSize: 11, fontWeight: 800 }}>Grand Total</td>
-                <td style={{ ...TD_STYLE(TOTAL_BG),    padding: '6px 8px', borderRight: '1px solid #94a3b8', fontSize: 11, textAlign: 'center' }}>–</td>
-                <td style={{ ...TD_DIVISION(TOTAL_BG), padding: '6px 8px', fontSize: 11 }}>–</td>
+                <td style={{ ...TD_DIVISION_OTHER(TOTAL_BG), padding: '6px 8px', fontSize: 11 }}>–</td>
                 {days.map(d => {
                   const expanded = isDayExpanded(d);
                   if (expanded) {
@@ -937,16 +934,15 @@ function AmazonSheets({
 }
 
 // ============================================================================
-// REST CHANNEL SHEETS (Ajio, Nykaa, FirstCry, Flipkart, D2C)
+// REST CHANNEL SHEETS (Ajio, Nykaa, FirstCry, Flipkart, D2C) - WITHOUT STYLE COUNT COLUMN
 // ============================================================================
 function RestChannelSheets({
-  days, parsedMY, stats, marketplaceName, myntraStyleCounts
+  days, parsedMY, stats, marketplaceName
 }: {
   days: number[];
   parsedMY: ParsedMonthYear;
   stats: DailyCategoryStat[];
   marketplaceName: string;
-  myntraStyleCounts: Record<string, number>;
 }) {
   const categories = [...FOOTWEAR_CATEGORIES, ...APPAREL_CATEGORIES];
 
@@ -989,22 +985,20 @@ function RestChannelSheets({
           <span className="font-extrabold text-xs text-blue-900 uppercase tracking-wide">
             {marketplaceName} — {isNew ? `New Contribution Sheet (${parsedMY.monthName} ${parsedMY.year})` : `Monthly Sales Sheet (${parsedMY.monthName} ${parsedMY.year})`}
           </span>
-          <span className="text-[11px] text-blue-700">Category · Style Count · Division → Frozen</span>
+          <span className="text-[11px] text-blue-700">Category · Division → Frozen</span>
         </div>
 
         <div className="overflow-auto max-h-[65vh]" style={{ position: 'relative' }}>
           <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: '100%' }}>
             <colgroup>
               <col style={{ width: COL_CATEGORY_W }} />
-              <col style={{ width: COL_STYLE_W }} />
               <col style={{ width: COL_DIVISION_W }} />
             </colgroup>
 
             <thead style={{ position: 'sticky', top: 0, zIndex: 30 }}>
               <tr>
                 <th style={{ ...TH_CATEGORY(hBg), padding: '6px 8px', borderRight: '1px solid #cbd5e1', borderBottom: '1px solid #94a3b8', fontSize: 11 }}>Category Level</th>
-                <th style={{ ...TH_STYLE(hBg),    padding: '6px 8px', borderRight: '1px solid #cbd5e1', borderBottom: '1px solid #94a3b8', fontSize: 11, textAlign: 'center' }}>Style Count</th>
-                <th style={{ ...TH_DIVISION(hBg), padding: '6px 8px', borderBottom: '1px solid #94a3b8', fontSize: 11 }}>Division</th>
+                <th style={{ ...TH_DIVISION_OTHER(hBg), padding: '6px 8px', borderBottom: '1px solid #94a3b8', fontSize: 11 }}>Division</th>
                 {days.map(d => {
                   const weekdayName = getRealWeekdayName(parsedMY.year, parsedMY.monthIndex, d);
                   return (
@@ -1018,8 +1012,7 @@ function RestChannelSheets({
               </tr>
               <tr>
                 <th style={{ ...TH_CATEGORY(GREY), padding: '5px 8px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #94a3b8', fontSize: 11, fontWeight: 700 }}>Category</th>
-                <th style={{ ...TH_STYLE(GREY),    padding: '5px 8px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #94a3b8', fontSize: 11, fontWeight: 700, textAlign: 'center' }}>Online Style</th>
-                <th style={{ ...TH_DIVISION(GREY), padding: '5px 8px', borderBottom: '2px solid #94a3b8', fontSize: 11, fontWeight: 700 }}>Division</th>
+                <th style={{ ...TH_DIVISION_OTHER(GREY), padding: '5px 8px', borderBottom: '2px solid #94a3b8', fontSize: 11, fontWeight: 700 }}>Division</th>
                 {days.map(d => {
                   const dateLabel = `${d} ${parsedMY.shortMonth}`;
                   return (
@@ -1035,7 +1028,6 @@ function RestChannelSheets({
 
             <tbody>
               {categories.map(cat => {
-                const sc = myntraStyleCounts[cat.name] ?? (cat as any).defaultMyntraStyleCount ?? 0;
                 const dm = lookup.get(cat.name);
                 let rowTotal = 0;
                 days.forEach(d => { const r = dm?.get(d); if (r) rowTotal += isNew ? r.newUnits : r.total; });
@@ -1044,8 +1036,7 @@ function RestChannelSheets({
                 return (
                   <tr key={cat.name} style={{ borderBottom: '1px solid #e2e8f0' }}>
                     <td style={{ ...TD_CATEGORY(WHITE), padding: '5px 8px', borderRight: '1px solid #e2e8f0', fontSize: 11, fontWeight: 700, color: '#0f172a' }}>{cat.name}</td>
-                    <td style={{ ...TD_STYLE(WHITE),    padding: '5px 8px', borderRight: '1px solid #e2e8f0', fontSize: 11, textAlign: 'center', color: '#475569' }}>{sc}</td>
-                    <td style={{ ...TD_DIVISION(WHITE), padding: '5px 8px', fontSize: 11, color: '#64748b' }}>{cat.division}</td>
+                    <td style={{ ...TD_DIVISION_OTHER(WHITE), padding: '5px 8px', fontSize: 11, color: '#64748b' }}>{cat.division}</td>
                     {days.map(d => {
                       const r = dm?.get(d);
                       const val = isNew ? (r?.newUnits || 0) : (r?.total || 0);
@@ -1058,8 +1049,7 @@ function RestChannelSheets({
               })}
               <tr style={{ borderTop: '2px solid #94a3b8', background: TOTAL_BG }}>
                 <td style={{ ...TD_CATEGORY(TOTAL_BG), padding: '6px 8px', borderRight: '1px solid #94a3b8', fontSize: 11, fontWeight: 800 }}>Grand Total</td>
-                <td style={{ ...TD_STYLE(TOTAL_BG),    padding: '6px 8px', borderRight: '1px solid #94a3b8', fontSize: 11, textAlign: 'center' }}>–</td>
-                <td style={{ ...TD_DIVISION(TOTAL_BG), padding: '6px 8px', fontSize: 11 }}>–</td>
+                <td style={{ ...TD_DIVISION_OTHER(TOTAL_BG), padding: '6px 8px', fontSize: 11 }}>–</td>
                 {days.map(d => {
                   const tot = isNew ? dayTotals[d].newUnits : dayTotals[d].total;
                   return <td key={d} style={{ padding: '6px 4px', textAlign: 'center', fontSize: 12, fontWeight: 900, color: '#1e40af', borderRight: '1px solid #e2e8f0' }}>{tot}</td>;
