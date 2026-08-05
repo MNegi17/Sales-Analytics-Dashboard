@@ -9,7 +9,8 @@ import { UploadHistoryTable } from './components/history/UploadHistoryTable';
 import { useSalesStore } from './store/useSalesStore';
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
+  // Default to Overview ('landing') page on open
+  const [activeTab, setActiveTab] = useState<ActiveTab>('landing');
   const [isUploadOpen, setIsUploadOpen] = useState(false);
 
   const { 
@@ -26,7 +27,7 @@ export function App() {
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        onOpenUploadModal={() => setIsUploadOpen(false)}
+        onOpenUploadModal={() => setIsUploadOpen(true)}
         totalRecordsCount={dailyStats.length}
       />
 
