@@ -1,9 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useSalesStore } from '../../store/useSalesStore';
 import { MARKETPLACE_CONFIGS } from '../../engine/constants';
+import { Trash2, AlertCircle } from 'lucide-react';
 
 export const UploadHistoryTable: React.FC = () => {
-  const { uploadLogs } = useSalesStore();
+  const { uploadLogs, deleteUploadLog, isAdminLoggedIn } = useSalesStore();
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleDelete = async (id: string) => {
+    setDeletingId(id);
+    await deleteUploadLog(id);
+    setDeletingId(null);
+  };
 
   return (
     <div className="space-y-6">
@@ -41,6 +49,7 @@ export const UploadHistoryTable: React.FC = () => {
                   <th className="py-3 px-4 text-right">Duplicates / Errors</th>
                   <th className="py-3 px-4 text-right">Duration</th>
                   <th className="py-3 px-4 text-center">Status</th>
+                  {isAdminLoggedIn && <th className="py-3 px-4 text-center">Action</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 bg-white font-mono">
@@ -95,6 +104,20 @@ export const UploadHistoryTable: React.FC = () => {
                         </span>
                       )}
                     </td>
+
+                    {isAdminLoggedIn && (
+                      <td className="py-3 px-4 text-center font-sans">
+                        <button
+                          onClick={() => handleDelete(log.id)}
+                          disabled={deletingId === log.id}
+                          className="px-2.5 py-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-semibold text-[11px] transition-colors flex items-center justify-center space-x-1 mx-auto"
+                          title="Delete this upload batch log"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Delete</span>
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

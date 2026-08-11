@@ -1,5 +1,15 @@
 import { MarketplaceConfig, MarketplaceId } from '../types';
 
+export const MARKETPLACE_ORDER: MarketplaceId[] = [
+  'myntra',
+  'd2c',
+  'firstcry',
+  'flipkart',
+  'amazon',
+  'nykaa',
+  'ajio'
+];
+
 export const MARKETPLACE_CONFIGS: Record<MarketplaceId, MarketplaceConfig> = {
   myntra: {
     id: 'myntra',
@@ -10,30 +20,13 @@ export const MARKETPLACE_CONFIGS: Record<MarketplaceId, MarketplaceConfig> = {
     badgeColor: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
     subChannels: ['PPMP', 'SJIT']
   },
-  amazon: {
-    id: 'amazon',
-    name: 'Amazon + Cocoblu + FBA',
-    channels: ['AMAZON_FBA', 'AMAZON_FLEX_API', 'AMAZON_COCOBLU', 'COCOBLU'],
-    structure: 'STRUCTURE_A',
-    iconName: 'ShoppingCart',
-    badgeColor: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-    subChannels: ['Amazon', 'Cocoblu', 'FBA']
-  },
-  ajio: {
-    id: 'ajio',
-    name: 'Ajio',
-    channels: ['AJIO_Dropship', 'AJIO'],
+  d2c: {
+    id: 'd2c',
+    name: 'D2C (Shopify)',
+    channels: ['D2C Shopify', 'D2C', 'SHOPIFY'],
     structure: 'STRUCTURE_B',
-    iconName: 'Store',
-    badgeColor: 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-  },
-  nykaa: {
-    id: 'nykaa',
-    name: 'Nykaa',
-    channels: ['PUSPL _NYKAA_ONLINE', 'NYKAA'],
-    structure: 'STRUCTURE_B',
-    iconName: 'Sparkles',
-    badgeColor: 'bg-pink-500/10 text-pink-400 border-pink-500/20'
+    iconName: 'Globe',
+    badgeColor: 'bg-purple-500/10 text-purple-400 border-purple-500/20'
   },
   firstcry: {
     id: 'firstcry',
@@ -51,13 +44,30 @@ export const MARKETPLACE_CONFIGS: Record<MarketplaceId, MarketplaceConfig> = {
     iconName: 'Package',
     badgeColor: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
   },
-  d2c: {
-    id: 'd2c',
-    name: 'D2C (Shopify)',
-    channels: ['D2C Shopify', 'D2C', 'SHOPIFY'],
+  amazon: {
+    id: 'amazon',
+    name: 'Amazon + Cocoblu + FBA',
+    channels: ['AMAZON_FLEX_API', 'PUSPL _COCOBLU_ONLINE', 'AMAZON_COCOBLU', 'COCOBLU', 'AMAZON_FBA'],
+    structure: 'STRUCTURE_A',
+    iconName: 'ShoppingCart',
+    badgeColor: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+    subChannels: ['Amazon', 'Cocoblu', 'FBA']
+  },
+  nykaa: {
+    id: 'nykaa',
+    name: 'Nykaa',
+    channels: ['PUSPL _NYKAA_ONLINE', 'NYKAA'],
     structure: 'STRUCTURE_B',
-    iconName: 'Globe',
-    badgeColor: 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+    iconName: 'Sparkles',
+    badgeColor: 'bg-pink-500/10 text-pink-400 border-pink-500/20'
+  },
+  ajio: {
+    id: 'ajio',
+    name: 'Ajio',
+    channels: ['AJIO_Dropship', 'AJIO'],
+    structure: 'STRUCTURE_B',
+    iconName: 'Store',
+    badgeColor: 'bg-blue-500/10 text-blue-400 border-blue-500/20'
   }
 };
 
@@ -65,6 +75,7 @@ export const CHANNEL_TO_MARKETPLACE_MAP: Record<string, { marketplaceId: Marketp
   'PUSPL _MYNTRA_ONLINE': { marketplaceId: 'myntra', subChannel: 'PPMP' },
   'MYNTRA_SJIT': { marketplaceId: 'myntra', subChannel: 'SJIT' },
   'AMAZON_FLEX_API': { marketplaceId: 'amazon', subChannel: 'Amazon' },
+  'PUSPL _COCOBLU_ONLINE': { marketplaceId: 'amazon', subChannel: 'Cocoblu' },
   'AMAZON_COCOBLU': { marketplaceId: 'amazon', subChannel: 'Cocoblu' },
   'COCOBLU': { marketplaceId: 'amazon', subChannel: 'Cocoblu' },
   'AMAZON_FBA': { marketplaceId: 'amazon', subChannel: 'FBA' },

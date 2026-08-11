@@ -1,24 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Navbar, ActiveTab } from './components/layout/Navbar';
 import { LandingPage } from './components/landing/LandingPage';
 import { ExcelSheetView } from './components/dashboard/ExcelSheetView';
-import { UploadModal } from './components/upload/UploadModal';
 import { MyntraStyleEditor } from './components/myntra/MyntraStyleEditor';
 import { ExportModule } from './components/export/ExportModule';
-import { UploadHistoryTable } from './components/history/UploadHistoryTable';
+import { AdminPortal } from './components/admin/AdminPortal';
 import { useSalesStore } from './store/useSalesStore';
 
 export function App() {
   // Default to Overview ('landing') page on open
   const [activeTab, setActiveTab] = useState<ActiveTab>('landing');
-  const [isUploadOpen, setIsUploadOpen] = useState(false);
 
   const { 
     dailyStats, 
     myntraStyleCounts,
     selectedMonthYear, 
     setSelectedMonthYear,
+    fetchInitialData
   } = useSalesStore();
+
+  useEffect(() => {
+    fetchInitialData();
+  }, [fetchInitialData]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
@@ -27,16 +30,15 @@ export function App() {
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        onOpenUploadModal={() => setIsUploadOpen(true)}
         totalRecordsCount={dailyStats.length}
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className={`flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 ${activeTab === 'dashboard' ? 'pt-2 pb-6' : 'py-6'}`}>
         
         {activeTab === 'landing' && (
           <LandingPage
-            onStartUpload={() => setIsUploadOpen(true)}
+            onOpenAdmin={() => setActiveTab('admin')}
             onViewDashboard={() => setActiveTab('dashboard')}
           />
         )}
@@ -58,17 +60,11 @@ export function App() {
           <ExportModule />
         )}
 
-        {activeTab === 'history' && (
-          <UploadHistoryTable />
+        {activeTab === 'admin' && (
+          <AdminPortal />
         )}
 
       </main>
-
-      {/* Upload Modal */}
-      <UploadModal
-        isOpen={isUploadOpen}
-        onClose={() => setIsUploadOpen(false)}
-      />
 
     </div>
   );

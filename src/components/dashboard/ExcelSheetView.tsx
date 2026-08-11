@@ -1,8 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DailyCategoryStat, MarketplaceId } from '../../types';
-import { MARKETPLACE_CONFIGS, FOOTWEAR_CATEGORIES, APPAREL_CATEGORIES } from '../../engine/constants';
+import { MARKETPLACE_CONFIGS, MARKETPLACE_ORDER, FOOTWEAR_CATEGORIES, APPAREL_CATEGORIES } from '../../engine/constants';
 import { generateMonthlyExcelWorkbook } from '../../engine/exporter';
 import { useSalesStore } from '../../store/useSalesStore';
+import {
+  SlidersHorizontal,
+  Maximize2,
+  Minimize2,
+  X,
+  Download,
+  Plus,
+  Calendar,
+  ChevronRight,
+  FileSpreadsheet
+} from 'lucide-react';
 
 // ─── Frozen column pixel widths ─────────────────────────────────────────────
 const COL_CATEGORY_W  = 160; // px – "Category" column
@@ -178,6 +189,9 @@ export const ExcelSheetView: React.FC<ExcelSheetViewProps> = ({
   const [isDownloading, setIsDownloading] = useState(false);
   const [isExpandedGlobal, setIsExpandedGlobal] = useState(false);
   
+  // Floating vertical drawer state
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
   // Add New Month Modal State
   const [isAddMonthOpen, setIsAddMonthOpen] = useState(false);
   const [newMonthSelect, setNewMonthSelect] = useState('July');
@@ -202,6 +216,17 @@ export const ExcelSheetView: React.FC<ExcelSheetViewProps> = ({
 
   // Generate days 1..daysInMonth
   const days = Array.from({ length: parsedMY.daysInMonth }, (_, i) => i + 1);
+
+  // Keyboard shortcut ESC to close sidebar
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsSidebarOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const handleDownloadExcel = async () => {
     setIsDownloading(true);
@@ -234,82 +259,180 @@ export const ExcelSheetView: React.FC<ExcelSheetViewProps> = ({
   };
 
   return (
-    <div className="space-y-8 pb-12">
+    <div className="space-y-5 pb-12 pt-0.5 relative">
 
-      {/* ── Toolbar ── */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col lg:flex-row items-center justify-between gap-4">
+      {/* ── FLOATING COMPACT ICON-ONLY TOGGLE BUTTON ── */}
+      <div className="fixed top-24 left-0 z-40">
+        <button
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          title="Sheet Controls & Filters"
+          aria-label="Toggle Sheet Controls"
+          className={`w-10 h-10 rounded-r-xl rounded-l-none shadow-2xl border-y border-r backdrop-blur-md transition-all duration-200 active:scale-95 flex items-center justify-center group ${
+            isSidebarOpen
+              ? 'bg-sky-600 text-white border-sky-400 shadow-sky-500/30'
+              : 'bg-slate-900/95 hover:bg-slate-900 text-white border-slate-700/80 shadow-slate-900/40 hover:border-sky-500/50 hover:scale-105'
+          }`}
+        >
+          <div className="relative flex items-center justify-center">
+            <SlidersHorizontal className="w-5 h-5 text-sky-400 group-hover:rotate-12 transition-transform" />
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-slate-900 animate-pulse" />
+          </div>
+        </button>
+      </div>
 
-        {/* Marketplace Tabs Container with extra bottom padding to separate slider */}
-        <div className="flex items-center space-x-1.5 overflow-x-auto w-full lg:w-auto pb-3 pt-1 scrollbar-thin">
-          {Object.values(MARKETPLACE_CONFIGS).map(mp => {
-            const isActive = mp.id === activeMarketplace;
-            return (
-              <button
-                key={mp.id}
-                onClick={() => setActiveMarketplace(mp.id)}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex-shrink-0 flex items-center space-x-1.5 border ${
-                  isActive
-                    ? 'bg-sky-600 text-white border-sky-700 shadow-sm'
-                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                }`}
-              >
-                <span>{mp.name}</span>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
-                  isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
-                }`}>{mp.structure === 'STRUCTURE_A' ? 'A' : 'B'}</span>
-              </button>
-            );
-          })}
-        </div>
+      {/* ── BACKDROP OVERLAY WHEN SIDEBAR IS OPEN ── */}
+      {isSidebarOpen && (
+        <div
+          onClick={() => setIsSidebarOpen(false)}
+          className="fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-xs transition-opacity duration-300"
+        />
+      )}
 
-        {/* Right Controls */}
-        <div className="flex flex-wrap items-center space-x-3 w-full lg:w-auto justify-end gap-y-2">
-          {currentConfig.structure === 'STRUCTURE_A' && (
-            <button
-              onClick={() => setIsExpandedGlobal(!isExpandedGlobal)}
-              className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold text-xs flex items-center space-x-1.5"
-            >
-              <span className="px-1 py-0.5 rounded bg-slate-200 font-mono text-[11px] font-black">
-                {isExpandedGlobal ? '−' : '+'}
-              </span>
-              <span>{isExpandedGlobal ? 'Collapse to Totals' : 'Expand Sub-Channels'}</span>
-            </button>
-          )}
-
-          {/* Month Selector */}
-          <div className="flex items-center space-x-1.5">
-            <span className="text-xs font-semibold text-slate-600">Month:</span>
-            <select
-              value={selectedMonthYear}
-              onChange={e => onMonthChange(e.target.value)}
-              className="px-3 py-1.5 rounded-lg clean-input text-xs font-bold"
-            >
-              {availableMonths.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
+      {/* ── VERTICAL SLIDEOUT CONTROLS PANEL ── */}
+      <aside
+        className={`fixed top-0 left-0 bottom-0 w-84 sm:w-96 bg-white z-50 shadow-2xl border-r border-slate-200 flex flex-col justify-between transform transition-transform duration-300 ease-in-out ${
+          isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {/* Top Section */}
+        <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-900 text-white">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-8 h-8 rounded-xl bg-sky-500/20 border border-sky-400/30 flex items-center justify-center text-sky-400">
+              <FileSpreadsheet className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-black text-white tracking-tight">Sheet Controls</h2>
+              <p className="text-[11px] text-slate-400">Marketplaces &amp; Date Period</p>
+            </div>
           </div>
 
-          {/* Add New Month Button */}
           <button
-            onClick={() => setIsAddMonthOpen(true)}
-            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs flex items-center space-x-1 shadow-xs"
+            onClick={() => setIsSidebarOpen(false)}
+            className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition-colors"
           >
-            <span>+ Add New Month</span>
+            <X className="w-4 h-4" />
           </button>
+        </div>
 
+        {/* Middle Scrollable Section */}
+        <div className="flex-1 p-5 overflow-y-auto space-y-6">
+          
+          {/* Section 1: Marketplaces List in Exact User Order */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black uppercase text-slate-400 tracking-wider">
+                Select Marketplace
+              </span>
+              <span className="text-[10px] text-slate-500 font-semibold">
+                7 Channels
+              </span>
+            </div>
+
+            <div className="space-y-1.5">
+              {MARKETPLACE_ORDER.map(mpId => {
+                const mp = MARKETPLACE_CONFIGS[mpId];
+                const isActive = mp.id === activeMarketplace;
+                return (
+                  <button
+                    key={mp.id}
+                    onClick={() => {
+                      setActiveMarketplace(mp.id);
+                    }}
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-between border ${
+                      isActive
+                        ? 'bg-sky-600 text-white border-sky-600 shadow-md shadow-sky-600/20 translate-x-1'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2.5">
+                      <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-white' : 'bg-slate-300'}`} />
+                      <span>{mp.name}</span>
+                    </div>
+
+                    <div className="flex items-center space-x-1.5">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold ${
+                        isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
+                      }`}>
+                        {mp.structure === 'STRUCTURE_A' ? 'Structure A' : 'Structure B'}
+                      </span>
+                      {isActive && <ChevronRight className="w-3.5 h-3.5 text-white/80" />}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Section 2: Sub-Channels Toggle (Structure A) */}
+          {currentConfig.structure === 'STRUCTURE_A' && (
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+              <span className="text-[11px] font-black uppercase text-slate-500 tracking-wider block">
+                Sub-Channel Columns
+              </span>
+              <button
+                onClick={() => setIsExpandedGlobal(!isExpandedGlobal)}
+                className="w-full py-2 px-3 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-xs flex items-center justify-center space-x-2 shadow-xs transition-colors"
+              >
+                <span className="w-5 h-5 rounded bg-slate-200 font-mono text-[12px] font-black flex items-center justify-center">
+                  {isExpandedGlobal ? '−' : '+'}
+                </span>
+                <span>{isExpandedGlobal ? 'Collapse to Daily Totals' : 'Expand All Sub-Channels'}</span>
+              </button>
+            </div>
+          )}
+
+          {/* Section 3: Month Selection */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black uppercase text-slate-400 tracking-wider">
+                Date Range (Month)
+              </span>
+              <Calendar className="w-3.5 h-3.5 text-slate-400" />
+            </div>
+
+            <div className="space-y-2">
+              <select
+                value={selectedMonthYear}
+                onChange={e => onMonthChange(e.target.value)}
+                className="w-full p-2.5 rounded-xl clean-input text-xs font-bold border border-slate-200 bg-white shadow-xs"
+              >
+                {availableMonths.map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+
+              <button
+                onClick={() => setIsAddMonthOpen(true)}
+                className="w-full py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center space-x-1.5 border border-slate-200 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5 text-slate-600" />
+                <span>Add Custom Month Sheet</span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Bottom Actions Section */}
+        <div className="p-5 border-t border-slate-100 bg-slate-50 space-y-2">
           <button
             onClick={handleDownloadExcel}
             disabled={isDownloading}
-            className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm"
+            className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-black text-xs shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center space-x-2"
           >
-            {isDownloading ? 'Downloading...' : 'Download Excel'}
+            <Download className="w-4 h-4" />
+            <span>{isDownloading ? 'Generating Workbook...' : 'Download Excel Sheet'}</span>
           </button>
+          <p className="text-[10px] text-center text-slate-400">
+            Press <kbd className="px-1 py-0.5 rounded bg-slate-200 font-mono text-[9px] text-slate-600">ESC</kbd> to dismiss this panel
+          </p>
         </div>
-      </div>
+      </aside>
 
       {/* ── ADD NEW MONTH MODAL ── */}
       {isAddMonthOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-xl p-6 w-full max-w-sm space-y-4">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl p-6 w-full max-w-sm space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <h3 className="font-bold text-slate-900 text-sm">Add New Month Sheet</h3>
               <button
@@ -326,7 +449,7 @@ export const ExcelSheetView: React.FC<ExcelSheetViewProps> = ({
                 <select
                   value={newMonthSelect}
                   onChange={e => setNewMonthSelect(e.target.value)}
-                  className="w-full p-2 rounded-lg clean-input text-xs font-bold"
+                  className="w-full p-2.5 rounded-lg clean-input text-xs font-bold"
                 >
                   {MONTH_NAMES.map(m => (
                     <option key={m} value={m}>{m}</option>
@@ -339,7 +462,7 @@ export const ExcelSheetView: React.FC<ExcelSheetViewProps> = ({
                 <select
                   value={newYearSelect}
                   onChange={e => setNewYearSelect(e.target.value)}
-                  className="w-full p-2 rounded-lg clean-input text-xs font-bold"
+                  className="w-full p-2.5 rounded-lg clean-input text-xs font-bold"
                 >
                   {['2025', '2026', '2027', '2028', '2029', '2030'].map(y => (
                     <option key={y} value={y}>{y}</option>
@@ -366,7 +489,7 @@ export const ExcelSheetView: React.FC<ExcelSheetViewProps> = ({
         </div>
       )}
 
-      {/* ── Sheets ── */}
+      {/* ── SHEETS RENDERED AT THE TOP ── */}
       {activeMarketplace === 'myntra' && (
         <MyntraSheets
           days={days}
@@ -411,6 +534,10 @@ function MyntraSheets({
   const [dayExpandMap, setDayExpandMap] = useState<Record<number, boolean>>({});
   const toggleDay = (d: number) => setDayExpandMap(p => ({ ...p, [d]: !p[d] }));
   const isDayExpanded = (d: number) => dayExpandMap[d] !== undefined ? dayExpandMap[d] : isExpandedGlobal;
+
+  // Fullscreen expansion state for each sheet
+  const [isFullScreenSales, setIsFullScreenSales] = useState(false);
+  const [isFullScreenNew, setIsFullScreenNew] = useState(false);
 
   const categories = [...FOOTWEAR_CATEGORIES, ...APPAREL_CATEGORIES];
 
@@ -459,15 +586,36 @@ function MyntraSheets({
     <div className="space-y-8">
 
       {/* ──── CARD 1: MONTHLY SALES SHEET ──── */}
-      <div className="rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-4 py-2.5 bg-emerald-50 border-b border-emerald-200 flex items-center justify-between">
-          <span className="font-extrabold text-xs text-emerald-900 uppercase tracking-wide">
-            Myntra + SJIT — Monthly Sales Sheet ({parsedMY.monthName} {parsedMY.year})
-          </span>
-          <span className="text-[11px] text-emerald-700">Category · Style Count · Division → Frozen</span>
+      <div className={`rounded-2xl border border-slate-200 shadow-sm overflow-hidden bg-white transition-all ${
+        isFullScreenSales ? 'fixed inset-0 z-50 rounded-none p-4 sm:p-6 flex flex-col' : ''
+      }`}>
+        <div className="px-4 py-3 bg-emerald-50 border-b border-emerald-200 flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <span className="font-black text-xs text-emerald-900 uppercase tracking-wide">
+              Myntra + SJIT — Monthly Sales Sheet ({parsedMY.monthName} {parsedMY.year})
+            </span>
+            <span className="text-[11px] text-emerald-700 hidden sm:inline">· Frozen Headers</span>
+          </div>
+
+          <button
+            onClick={() => setIsFullScreenSales(!isFullScreenSales)}
+            className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shadow-xs transition-all active:scale-95"
+          >
+            {isFullScreenSales ? (
+              <>
+                <Minimize2 className="w-3.5 h-3.5" />
+                <span>Exit Fullscreen</span>
+              </>
+            ) : (
+              <>
+                <Maximize2 className="w-3.5 h-3.5" />
+                <span>Fullscreen</span>
+              </>
+            )}
+          </button>
         </div>
 
-        <div className="overflow-auto max-h-[65vh]" style={{ position: 'relative' }}>
+        <div className={`overflow-auto ${isFullScreenSales ? 'flex-1 max-h-none' : 'max-h-[65vh]'}`} style={{ position: 'relative' }}>
           <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: '100%' }}>
             <colgroup>
               <col style={{ width: COL_CATEGORY_W }} />
@@ -593,15 +741,36 @@ function MyntraSheets({
       </div>
 
       {/* ──── CARD 2: NEW CONTRIBUTION SHEET ──── */}
-      <div className="rounded-xl border border-rose-200 shadow-sm overflow-hidden">
-        <div className="px-4 py-2.5 bg-rose-50 border-b border-rose-200 flex items-center justify-between">
-          <span className="font-extrabold text-xs text-rose-900 uppercase tracking-wide">
-            Myntra + SJIT — New Contribution Sheet ({parsedMY.monthName} {parsedMY.year})
-          </span>
-          <span className="text-[11px] text-rose-700">Calculated from "New" column entries</span>
+      <div className={`rounded-2xl border border-rose-200 shadow-sm overflow-hidden bg-white transition-all ${
+        isFullScreenNew ? 'fixed inset-0 z-50 rounded-none p-4 sm:p-6 flex flex-col' : ''
+      }`}>
+        <div className="px-4 py-3 bg-rose-50 border-b border-rose-200 flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <span className="font-black text-xs text-rose-900 uppercase tracking-wide">
+              Myntra + SJIT — New Contribution Sheet ({parsedMY.monthName} {parsedMY.year})
+            </span>
+            <span className="text-[11px] text-rose-700 hidden sm:inline">· "New" Column Entries</span>
+          </div>
+
+          <button
+            onClick={() => setIsFullScreenNew(!isFullScreenNew)}
+            className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] shadow-xs transition-all active:scale-95"
+          >
+            {isFullScreenNew ? (
+              <>
+                <Minimize2 className="w-3.5 h-3.5" />
+                <span>Exit Fullscreen</span>
+              </>
+            ) : (
+              <>
+                <Maximize2 className="w-3.5 h-3.5" />
+                <span>Fullscreen</span>
+              </>
+            )}
+          </button>
         </div>
 
-        <div className="overflow-auto max-h-[65vh]" style={{ position: 'relative' }}>
+        <div className={`overflow-auto ${isFullScreenNew ? 'flex-1 max-h-none' : 'max-h-[65vh]'}`} style={{ position: 'relative' }}>
           <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: '100%' }}>
             <colgroup>
               <col style={{ width: COL_CATEGORY_W }} />
@@ -729,6 +898,10 @@ function AmazonSheets({
   const toggleDay = (d: number) => setDayExpandMap(p => ({ ...p, [d]: !p[d] }));
   const isDayExpanded = (d: number) => dayExpandMap[d] !== undefined ? dayExpandMap[d] : isExpandedGlobal;
 
+  // Fullscreen expansion state
+  const [isFullScreenSales, setIsFullScreenSales] = useState(false);
+  const [isFullScreenNew, setIsFullScreenNew] = useState(false);
+
   const categories = [...FOOTWEAR_CATEGORIES, ...APPAREL_CATEGORIES];
 
   type DayRec = { amz: number; coco: number; fba: number; amzN: number; cocoN: number; fbaN: number };
@@ -772,19 +945,42 @@ function AmazonSheets({
   const GREY = '#f2f2f2';
 
   function renderSalesTable(isNew: boolean) {
+    const isFullScreen = isNew ? isFullScreenNew : isFullScreenSales;
+    const setIsFullScreen = isNew ? setIsFullScreenNew : setIsFullScreenSales;
     const title = isNew ? `Amazon + Cocoblu + FBA — New Contribution Sheet (${parsedMY.monthName} ${parsedMY.year})` : `Amazon + Cocoblu + FBA — Monthly Sales Sheet (${parsedMY.monthName} ${parsedMY.year})`;
     const hBg = isNew ? '#fce4d6' : HEADER_BG;
     const h2Bg = isNew ? '#f8cbad' : HEADER2_BG;
     const borderColor = isNew ? '#fda4af' : '#94a3b8';
 
     return (
-      <div className={`rounded-xl border shadow-sm overflow-hidden ${isNew ? 'border-amber-200' : 'border-slate-200'}`}>
-        <div className={`px-4 py-2.5 flex items-center justify-between ${isNew ? 'bg-amber-50 border-b border-amber-200' : 'bg-amber-50 border-b border-amber-200'}`}>
-          <span className="font-extrabold text-xs text-amber-900 uppercase tracking-wide">{title}</span>
-          <span className="text-[11px] text-amber-700">Category · Division → Frozen</span>
+      <div className={`rounded-2xl border shadow-sm overflow-hidden bg-white transition-all ${isNew ? 'border-amber-200' : 'border-slate-200'} ${
+        isFullScreen ? 'fixed inset-0 z-50 rounded-none p-4 sm:p-6 flex flex-col' : ''
+      }`}>
+        <div className="px-4 py-3 bg-amber-50 border-b border-amber-200 flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <span className="font-black text-xs text-amber-900 uppercase tracking-wide">{title}</span>
+            <span className="text-[11px] text-amber-700 hidden sm:inline">· Category · Division → Frozen</span>
+          </div>
+
+          <button
+            onClick={() => setIsFullScreen(!isFullScreen)}
+            className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] shadow-xs transition-all active:scale-95"
+          >
+            {isFullScreen ? (
+              <>
+                <Minimize2 className="w-3.5 h-3.5" />
+                <span>Exit Fullscreen</span>
+              </>
+            ) : (
+              <>
+                <Maximize2 className="w-3.5 h-3.5" />
+                <span>Fullscreen</span>
+              </>
+            )}
+          </button>
         </div>
 
-        <div className="overflow-auto max-h-[65vh]" style={{ position: 'relative' }}>
+        <div className={`overflow-auto ${isFullScreen ? 'flex-1 max-h-none' : 'max-h-[65vh]'}`} style={{ position: 'relative' }}>
           <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: '100%' }}>
             <colgroup>
               <col style={{ width: COL_CATEGORY_W }} />
@@ -934,7 +1130,7 @@ function AmazonSheets({
 }
 
 // ============================================================================
-// REST CHANNEL SHEETS (Ajio, Nykaa, FirstCry, Flipkart, D2C) - WITHOUT STYLE COUNT COLUMN
+// REST CHANNEL SHEETS (Ajio, Nykaa, FirstCry, Flipkart, D2C)
 // ============================================================================
 function RestChannelSheets({
   days, parsedMY, stats, marketplaceName
@@ -944,6 +1140,9 @@ function RestChannelSheets({
   stats: DailyCategoryStat[];
   marketplaceName: string;
 }) {
+  const [isFullScreenSales, setIsFullScreenSales] = useState(false);
+  const [isFullScreenNew, setIsFullScreenNew] = useState(false);
+
   const categories = [...FOOTWEAR_CATEGORIES, ...APPAREL_CATEGORIES];
 
   type DayRec = { total: number; newUnits: number };
@@ -976,19 +1175,42 @@ function RestChannelSheets({
   const GREY      = '#f2f2f2';
 
   function renderTable(isNew: boolean) {
+    const isFullScreen = isNew ? isFullScreenNew : isFullScreenSales;
+    const setIsFullScreen = isNew ? setIsFullScreenNew : setIsFullScreenSales;
     const hBg = isNew ? '#dce6f1' : HEADER_BG;
     const h2Bg = isNew ? '#b8cce4' : HEADER2_BG;
 
     return (
-      <div className="rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-4 py-2.5 bg-blue-50 border-b border-blue-200 flex items-center justify-between">
-          <span className="font-extrabold text-xs text-blue-900 uppercase tracking-wide">
-            {marketplaceName} — {isNew ? `New Contribution Sheet (${parsedMY.monthName} ${parsedMY.year})` : `Monthly Sales Sheet (${parsedMY.monthName} ${parsedMY.year})`}
-          </span>
-          <span className="text-[11px] text-blue-700">Category · Division → Frozen</span>
+      <div className={`rounded-2xl border border-slate-200 shadow-sm overflow-hidden bg-white transition-all ${
+        isFullScreen ? 'fixed inset-0 z-50 rounded-none p-4 sm:p-6 flex flex-col' : ''
+      }`}>
+        <div className="px-4 py-3 bg-blue-50 border-b border-blue-200 flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <span className="font-black text-xs text-blue-900 uppercase tracking-wide">
+              {marketplaceName} — {isNew ? `New Contribution Sheet (${parsedMY.monthName} ${parsedMY.year})` : `Monthly Sales Sheet (${parsedMY.monthName} ${parsedMY.year})`}
+            </span>
+            <span className="text-[11px] text-blue-700 hidden sm:inline">· Category · Division → Frozen</span>
+          </div>
+
+          <button
+            onClick={() => setIsFullScreen(!isFullScreen)}
+            className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] shadow-xs transition-all active:scale-95"
+          >
+            {isFullScreen ? (
+              <>
+                <Minimize2 className="w-3.5 h-3.5" />
+                <span>Exit Fullscreen</span>
+              </>
+            ) : (
+              <>
+                <Maximize2 className="w-3.5 h-3.5" />
+                <span>Fullscreen</span>
+              </>
+            )}
+          </button>
         </div>
 
-        <div className="overflow-auto max-h-[65vh]" style={{ position: 'relative' }}>
+        <div className={`overflow-auto ${isFullScreen ? 'flex-1 max-h-none' : 'max-h-[65vh]'}`} style={{ position: 'relative' }}>
           <table style={{ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: '100%' }}>
             <colgroup>
               <col style={{ width: COL_CATEGORY_W }} />

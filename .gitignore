@@ -16,9 +16,11 @@ lerna-debug.log*
 *.sln
 *.sw?
 
-# Temporary Excel lock files
+# Temporary & Data files
 ~$*.xlsx
 ~$*.xls
+*.xlsx
+*.csv
 
 # Node modules & build outputs
 node_modules

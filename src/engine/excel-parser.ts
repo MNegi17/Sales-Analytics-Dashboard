@@ -22,80 +22,135 @@ const MONTH_NAMES = [
 const SHORT_MONTH_MAP: Record<string, number> = {
   jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
   jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
-  // allow full names too
   january: 0, february: 1, march: 2, april: 3, june: 5,
   july: 6, august: 7, september: 8, october: 9, november: 10, december: 11
 };
 
 /**
- * PRIMARY date parser:
- * Handles the file's specific format: Date column = "dd mmm" (e.g. "05 May", "13 Aug")
- * Year column = "2026" (separate numeric column)
- *
- * Also handles fallback patterns as needed.
+ * Flexible Channel Mapping Lookup
+ */
+function findChannelMapping(channelStr: string): { marketplaceId: MarketplaceId; subChannel?: string } | null {
+  if (!channelStr) return null;
+  const trimmed = channelStr.trim();
+  const norm = trimmed.toUpperCase().replace(/[\s_\-]/g, '');
+
+  // 1. Direct key match
+  if (CHANNEL_TO_MARKETPLACE_MAP[trimmed]) return CHANNEL_TO_MARKETPLACE_MAP[trimmed];
+
+  // 2. Normalized key match
+  for (const [key, val] of Object.entries(CHANNEL_TO_MARKETPLACE_MAP)) {
+    if (key.trim().toUpperCase().replace(/[\s_\-]/g, '') === norm) return val;
+  }
+
+  // 3. Keyword / partial matching fallback
+  if (norm.includes('MYNTRA')) {
+    if (norm.includes('SJIT')) return { marketplaceId: 'myntra', subChannel: 'SJIT' };
+    return { marketplaceId: 'myntra', subChannel: 'PPMP' };
+  }
+  if (norm.includes('AMAZON') || norm.includes('COCOBLU')) {
+    if (norm.includes('FBA')) return { marketplaceId: 'amazon', subChannel: 'FBA' };
+    if (norm.includes('COCOBLU')) return { marketplaceId: 'amazon', subChannel: 'Cocoblu' };
+    return { marketplaceId: 'amazon', subChannel: 'Amazon' };
+  }
+  if (norm.includes('AJIO')) return { marketplaceId: 'ajio' };
+  if (norm.includes('NYKAA')) return { marketplaceId: 'nykaa' };
+  if (norm.includes('FIRSTCRY') || norm.includes('FIRST')) return { marketplaceId: 'firstcry' };
+  if (norm.includes('FLIPKART')) return { marketplaceId: 'flipkart' };
+  if (norm.includes('D2C') || norm.includes('SHOPIFY')) return { marketplaceId: 'd2c' };
+
+  return null;
+}
+
+/**
+ * Robust Date Parser:
+ * Handles:
+ * 1. Excel Serial Numbers (e.g. 45809, 46175)
+ * 2. "05 May" or "05-Jun-26" or "5 Jun 2026"
+ * 3. "Jun 05, 2026" or "June 5, 2026"
+ * 4. "YYYY-MM-DD"
+ * 5. "DD/MM/YYYY" or "DD-MM-YYYY" or "MM/DD/YYYY"
+ * 6. Native JS Date
  */
 function parseSheetDate(rawDateVal: any, rawYearVal: any): Date | null {
+  if (rawDateVal === null || rawDateVal === undefined || rawDateVal === '') return null;
 
-  // ── Step 1: Try "dd mmm" + Year column (PRIMARY – the actual file format) ──
-  if (rawDateVal) {
-    const strDate = String(rawDateVal).trim();
-
-    // Pattern: "05 May" or "5 May" or "05-May" or "5-May" (day + 3-letter month)
-    const ddMmmMatch = strDate.match(/^(\d{1,2})[\s\-\/]([A-Za-z]{3,})$/);
-    if (ddMmmMatch) {
-      const day = parseInt(ddMmmMatch[1], 10);
-      const monthStr = ddMmmMatch[2].toLowerCase();
-      const monthIdx = SHORT_MONTH_MAP[monthStr];
-
-      if (monthIdx !== undefined && day >= 1 && day <= 31) {
-        // Use Year column for year
-        let year = 2026; // sensible default
-        if (rawYearVal !== null && rawYearVal !== undefined) {
-          const parsedYear = parseInt(String(rawYearVal).trim(), 10);
-          if (!isNaN(parsedYear) && parsedYear > 2000) {
-            year = parsedYear;
-          }
-        }
-        return new Date(year, monthIdx, day);
+  // ── Step 1: Excel Serial Number (e.g. 46175 or "46175") ──
+  const isNum = typeof rawDateVal === 'number';
+  const isNumStr = typeof rawDateVal === 'string' && /^\d{5}(\.\d+)?$/.test(rawDateVal.trim());
+  if (isNum || isNumStr) {
+    const serial = parseFloat(String(rawDateVal));
+    if (serial > 20000 && serial < 60000) {
+      const utcDays = Math.floor(serial - 25569);
+      const utcValue = utcDays * 86400;
+      const dateInfo = new Date(utcValue * 1000);
+      let year = dateInfo.getUTCFullYear();
+      if ((year < 2020 || year > 2035) && rawYearVal) {
+        const py = parseInt(String(rawYearVal).trim(), 10);
+        if (!isNaN(py) && py > 2000) year = py;
       }
-    }
-
-    // Pattern: "05 May 2026" or "5 May 2026" (dd mmm yyyy – year embedded)
-    const ddMmmYyyyMatch = strDate.match(/^(\d{1,2})[\s\-\/]([A-Za-z]{3,})[\s\-\/](\d{4})$/);
-    if (ddMmmYyyyMatch) {
-      const day = parseInt(ddMmmYyyyMatch[1], 10);
-      const monthStr = ddMmmYyyyMatch[2].toLowerCase();
-      const monthIdx = SHORT_MONTH_MAP[monthStr];
-      const year = parseInt(ddMmmYyyyMatch[3], 10);
-      if (monthIdx !== undefined && day >= 1 && day <= 31 && year > 2000) {
-        return new Date(year, monthIdx, day);
-      }
+      return new Date(year, dateInfo.getUTCMonth(), dateInfo.getUTCDate());
     }
   }
 
-  // ── Step 2: Already a JS Date (XLSX parsed it as a date type) ──
+  // ── Step 2: JS Date instance ──
   if (rawDateVal instanceof Date && !isNaN(rawDateVal.getTime())) {
     let year = rawDateVal.getFullYear();
-    // Fix XLSX serial date 2-digit year issue
     if (year < 2000) year += 100;
-
-    // If year looks wrong (defaulted to 1899/1900), use Year column
     if ((year < 2020 || year > 2035) && rawYearVal) {
       const parsedYear = parseInt(String(rawYearVal).trim(), 10);
-      if (!isNaN(parsedYear) && parsedYear > 2000) {
-        year = parsedYear;
-      }
+      if (!isNaN(parsedYear) && parsedYear > 2000) year = parsedYear;
     }
     return new Date(year, rawDateVal.getMonth(), rawDateVal.getDate());
   }
 
-  if (!rawDateVal) return null;
-  const strVal = String(rawDateVal).trim();
-  if (!strVal) return null;
+  const strDate = String(rawDateVal).trim();
+  if (!strDate) return null;
 
-  // ── Step 3: YYYY-MM-DD ISO format ──
-  if (strVal.match(/^\d{4}-\d{2}-\d{2}/)) {
-    const d = new Date(strVal);
+  // ── Step 3: "dd mmm yy" or "dd mmm yyyy" or "dd-mmm-yy" (e.g. "05-Jun-26", "5 Jun 2026", "05 May") ──
+  const ddMmmMatch = strDate.match(/^(\d{1,2})[\s\-\/]([A-Za-z]{3,})(?:[\s\-\/](\d{2,4}))?$/);
+  if (ddMmmMatch) {
+    const day = parseInt(ddMmmMatch[1], 10);
+    const monthStr = ddMmmMatch[2].toLowerCase();
+    const monthIdx = SHORT_MONTH_MAP[monthStr];
+
+    if (monthIdx !== undefined && day >= 1 && day <= 31) {
+      let year = 2026;
+      if (ddMmmMatch[3]) {
+        let parsedY = parseInt(ddMmmMatch[3], 10);
+        if (parsedY < 100) parsedY += 2000;
+        year = parsedY;
+      } else if (rawYearVal) {
+        const py = parseInt(String(rawYearVal).trim(), 10);
+        if (!isNaN(py) && py > 2000) year = py;
+      }
+      return new Date(year, monthIdx, day);
+    }
+  }
+
+  // ── Step 4: "mmm dd, yyyy" or "mmm dd yyyy" (e.g. "Jun 05, 2026") ──
+  const mmmDdMatch = strDate.match(/^([A-Za-z]{3,})[\s\-\/](\d{1,2}),?(?:[\s\-\/](\d{2,4}))?$/);
+  if (mmmDdMatch) {
+    const monthStr = mmmDdMatch[1].toLowerCase();
+    const monthIdx = SHORT_MONTH_MAP[monthStr];
+    const day = parseInt(mmmDdMatch[2], 10);
+
+    if (monthIdx !== undefined && day >= 1 && day <= 31) {
+      let year = 2026;
+      if (mmmDdMatch[3]) {
+        let parsedY = parseInt(mmmDdMatch[3], 10);
+        if (parsedY < 100) parsedY += 2000;
+        year = parsedY;
+      } else if (rawYearVal) {
+        const py = parseInt(String(rawYearVal).trim(), 10);
+        if (!isNaN(py) && py > 2000) year = py;
+      }
+      return new Date(year, monthIdx, day);
+    }
+  }
+
+  // ── Step 5: YYYY-MM-DD ISO format ──
+  if (strDate.match(/^\d{4}-\d{2}-\d{2}/)) {
+    const d = new Date(strDate);
     if (!isNaN(d.getTime())) {
       let year = d.getFullYear();
       if ((year < 2020 || year > 2035) && rawYearVal) {
@@ -106,16 +161,22 @@ function parseSheetDate(rawDateVal: any, rawYearVal: any): Date | null {
     }
   }
 
-  // ── Step 4: DD/MM/YYYY or DD-MM-YYYY ──
-  const dateTokens = strVal.split(/\s+/)[0].split(/[/\-\.]/);
+  // ── Step 6: DD/MM/YYYY or DD-MM-YYYY or MM/DD/YYYY ──
+  const dateTokens = strDate.split(/\s+/)[0].split(/[/\-\.]/);
   if (dateTokens.length >= 3) {
-    const day = parseInt(dateTokens[0], 10);
-    const month = parseInt(dateTokens[1], 10) - 1;
+    let p1 = parseInt(dateTokens[0], 10);
+    let p2 = parseInt(dateTokens[1], 10);
     let year = parseInt(dateTokens[2], 10);
 
-    if (year < 100) {
-      const py = rawYearVal ? parseInt(String(rawYearVal).trim(), 10) : NaN;
-      year = !isNaN(py) && py > 2000 ? py : 2000 + year;
+    if (year < 100) year += 2000;
+
+    // Handle DD/MM/YYYY vs MM/DD/YYYY
+    let day = p1;
+    let month = p2 - 1;
+    if (p1 <= 12 && p2 > 12) {
+      // MM/DD/YYYY
+      day = p2;
+      month = p1 - 1;
     }
 
     if (!isNaN(day) && !isNaN(month) && !isNaN(year) && month >= 0 && month < 12 && day >= 1 && day <= 31) {
@@ -126,15 +187,35 @@ function parseSheetDate(rawDateVal: any, rawYearVal: any): Date | null {
   return null;
 }
 
+/**
+ * Case-insensitive & normalized property lookup
+ */
+function getRowValue(row: Record<string, any>, candidateKeys: string[]): any {
+  for (const k of candidateKeys) {
+    if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') {
+      return row[k];
+    }
+  }
+
+  const rowKeys = Object.keys(row);
+  for (const candidate of candidateKeys) {
+    const normCandidate = candidate.toLowerCase().replace(/[\s_\-]/g, '');
+    const foundKey = rowKeys.find(rk => rk.toLowerCase().replace(/[\s_\-]/g, '') === normCandidate);
+    if (foundKey && row[foundKey] !== undefined && row[foundKey] !== null && String(row[foundKey]).trim() !== '') {
+      return row[foundKey];
+    }
+  }
+
+  return undefined;
+}
+
 export async function parseSalesExcelFile(file: File): Promise<ParseResult> {
   const arrayBuffer = await file.arrayBuffer();
-  // Use raw:true to avoid XLSX auto-converting "05 May" into a JS Date incorrectly
   const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: false, raw: false });
 
   const firstSheetName = workbook.SheetNames[0];
   const worksheet = workbook.Sheets[firstSheetName];
 
-  // sheet_to_json with raw:false gives us string representations of cells
   const jsonRows = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet, { raw: false });
 
   const parsedRows: RawSaleRow[] = [];
@@ -146,13 +227,17 @@ export async function parseSalesExcelFile(file: File): Promise<ParseResult> {
     const row = jsonRows[idx];
 
     // ── Channel Name ──
-    const channelName = (row['Channel Name'] || '').toString().trim();
+    const rawChannelName = getRowValue(row, [
+      'Channel Name', 'channel_name', 'Channel', 'channel', 'Marketplace', 'Sales Channel', 'ChannelName'
+    ]);
+
+    const channelName = (rawChannelName || '').toString().trim();
     if (!channelName) {
       errors.push(`Row ${idx + 2}: Missing Channel Name`);
       continue;
     }
 
-    const mapping = CHANNEL_TO_MARKETPLACE_MAP[channelName];
+    const mapping = findChannelMapping(channelName);
     if (mapping) {
       marketplaceSet.add(mapping.marketplaceId);
     } else {
@@ -160,24 +245,32 @@ export async function parseSalesExcelFile(file: File): Promise<ParseResult> {
     }
 
     // ── Category & Division ──
-    const category = (row['Category'] || '').toString().trim().toUpperCase();
-    const division = (row['Division'] || '').toString().trim().toUpperCase();
-    const isNew = !!(row['New'] && row['New'].toString().trim().length > 0);
+    const rawCategory = getRowValue(row, [
+      'Category', 'category', 'Product Category', 'Item Category', 'Category Name'
+    ]);
+    const rawDivision = getRowValue(row, [
+      'Division', 'division', 'Department', 'Gender'
+    ]);
+    const rawNew = getRowValue(row, [
+      'New', 'new', 'Is New', 'IsNew', 'New Style', 'Contribution'
+    ]);
+
+    const category = (rawCategory || '').toString().trim().toUpperCase();
+    const division = (rawDivision || '').toString().trim().toUpperCase();
+    const isNew = !!(rawNew && String(rawNew).trim().length > 0 && String(rawNew).trim().toUpperCase() !== 'FALSE' && String(rawNew).trim() !== '0');
 
     if (!category) {
       errors.push(`Row ${idx + 2}: Missing Category`);
       continue;
     }
 
-    // ── Date: use "Date" column (dd mmm) + "Year" column ──
-    // Try the explicit columns the user described first, then fallbacks
-    const rawDateVal =
-      row['Date'] ||                                          // PRIMARY: "dd mmm" column
-      row['Order Date as dd/mm/yyyy hh:MM:ss'] ||            // fallback
-      row['Shipping Package Creation Date'] ||               // fallback
-      row['Order Date'];                                     // fallback
+    // ── Date: check "Date", "Order Date", etc. ──
+    const rawDateVal = getRowValue(row, [
+      'Date', 'date', 'Order Date', 'order_date', 'Order Date as dd/mm/yyyy hh:MM:ss',
+      'Shipping Package Creation Date', 'Sale Date', 'Created At', 'OrderDate', 'Transaction Date'
+    ]);
 
-    const rawYearVal = row['Year'];                          // Separate year column
+    const rawYearVal = getRowValue(row, ['Year', 'year']);
 
     const dateObj = parseSheetDate(rawDateVal, rawYearVal);
 
@@ -199,10 +292,10 @@ export async function parseSalesExcelFile(file: File): Promise<ParseResult> {
     dateSet.add(formattedDate);
 
     parsedRows.push({
-      skuCode:       (row['Item SKU Code'] || row['Seller SKU Code'] || '').toString(),
+      skuCode:       (getRowValue(row, ['Item SKU Code', 'Seller SKU Code', 'SKU']) || '').toString(),
       division:      division || 'APPAREL',
       category,
-      subcategory:   (row['Subcategory'] || '').toString(),
+      subcategory:   (getRowValue(row, ['Subcategory', 'subcategory']) || '').toString(),
       isNew,
       channelName,
       orderDate:     dateObj,
@@ -211,8 +304,8 @@ export async function parseSalesExcelFile(file: File): Promise<ParseResult> {
       monthName,
       monthYearKey,
       year,
-      saleOrderCode: (row['Sale Order Code'] || '').toString(),
-      price:         parseFloat(row['New SP'] || row['Cost Price'] || '0') || 0
+      saleOrderCode: (getRowValue(row, ['Sale Order Code', 'Order ID']) || '').toString(),
+      price:         parseFloat(getRowValue(row, ['New SP', 'Cost Price', 'Price']) || '0') || 0
     });
   }
 

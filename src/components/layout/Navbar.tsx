@@ -1,22 +1,22 @@
 import React, { useState } from 'react';
-import { Menu, X, Upload, BarChart2, Layers, Download, History, Sparkles } from 'lucide-react';
+import { Menu, X, BarChart2, Layers, Download, Lock, Sparkles, ShieldCheck } from 'lucide-react';
+import { useSalesStore } from '../../store/useSalesStore';
 
-export type ActiveTab = 'landing' | 'dashboard' | 'upload' | 'myntra-editor' | 'export' | 'history';
+export type ActiveTab = 'landing' | 'dashboard' | 'myntra-editor' | 'export' | 'admin';
 
 interface NavbarProps {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
-  onOpenUploadModal: () => void;
   totalRecordsCount: number;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
-  onOpenUploadModal,
   totalRecordsCount
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { isAdminLoggedIn } = useSalesStore();
 
   const handleNavClick = (tab: ActiveTab) => {
     setActiveTab(tab);
@@ -91,14 +91,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             <button
-              onClick={() => handleNavClick('history')}
-              className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                activeTab === 'history'
-                  ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              onClick={() => handleNavClick('admin')}
+              className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center space-x-1.5 ${
+                activeTab === 'admin'
+                  ? 'bg-white text-sky-800 font-bold shadow-xs border border-slate-200'
+                  : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
-              Audit History
+              <Lock className="w-3.5 h-3.5 text-sky-600" />
+              <span>Admin</span>
             </button>
           </nav>
 
@@ -110,11 +111,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
 
             <button
-              onClick={onOpenUploadModal}
-              className="px-3.5 sm:px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs shadow-xs transition-all flex items-center space-x-1.5"
+              onClick={() => handleNavClick('admin')}
+              className={`px-3.5 sm:px-4 py-2 rounded-lg font-semibold text-xs shadow-xs transition-all flex items-center space-x-1.5 ${
+                isAdminLoggedIn
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : 'bg-slate-900 hover:bg-slate-800 text-white'
+              }`}
             >
-              <Upload className="w-3.5 h-3.5" />
-              <span>Upload Sales File</span>
+              {isAdminLoggedIn ? <ShieldCheck className="w-3.5 h-3.5 text-emerald-200" /> : <Lock className="w-3.5 h-3.5 text-slate-300" />}
+              <span>{isAdminLoggedIn ? 'Admin Portal' : 'Admin Login'}</span>
             </button>
 
             {/* Mobile Menu Toggle Button */}
@@ -174,13 +179,13 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
 
           <button
-            onClick={() => handleNavClick('history')}
+            onClick={() => handleNavClick('admin')}
             className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold flex items-center space-x-2.5 ${
-              activeTab === 'history' ? 'bg-sky-50 text-sky-700 font-extrabold' : 'text-slate-700 hover:bg-slate-100'
+              activeTab === 'admin' ? 'bg-sky-50 text-sky-700 font-extrabold' : 'text-slate-700 hover:bg-slate-100'
             }`}
           >
-            <History className="w-4 h-4" />
-            <span>Audit History</span>
+            <Lock className="w-4 h-4 text-sky-600" />
+            <span>Admin</span>
           </button>
         </div>
       )}
