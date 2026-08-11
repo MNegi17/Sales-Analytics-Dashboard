@@ -30,9 +30,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           
           {/* Brand Logo */}
           <div className="flex items-center space-x-3 cursor-pointer" onClick={() => handleNavClick('landing')}>
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-sky-600 to-emerald-600 flex items-center justify-center text-white font-black text-sm tracking-tighter shadow-sm">
-              SA
-            </div>
+            <img src="/favicon.png" alt="Sales Analytics Logo" className="h-9 w-9 rounded-xl object-contain shadow-xs hover:scale-105 transition-transform" />
             <div>
               <div className="flex items-center space-x-2">
                 <span className="font-bold text-base text-slate-900 tracking-tight">Sales Analytics</span>
