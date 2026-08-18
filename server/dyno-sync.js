@@ -60,6 +60,77 @@ function mapDynoChannel(rawChannel) {
   return { marketplaceId: 'myntra', subChannel: 'PPMP' };
 }
 
+const CATEGORY_ALIASES = {
+  'SHIRT H/S': 'SHIRT',
+  'SHIRT F/S': 'SHIRT',
+  'SHIRTS': 'SHIRT',
+  'POLO': 'POLO T-SHIRT',
+  'POLO T SHIRT': 'POLO T-SHIRT',
+  'POLO T-SHIRTS': 'POLO T-SHIRT',
+  'TSHIRT': 'T-SHIRT',
+  'T SHIRT': 'T-SHIRT',
+  'T-SHIRTS': 'T-SHIRT',
+  'BALLERINA': 'BALLERINAS',
+  'BOOT': 'BOOTS',
+  'FASHION SANDAL': 'FASHION SANDALS',
+  'SANDAL': 'FASHION SANDALS',
+  'SANDALS': 'FASHION SANDALS',
+  'SLIDE': 'SLIDES',
+  'FLIP FLOP': 'FLIP FLOPS',
+  'FLIP-FLOPS': 'FLIP FLOPS',
+  'FLIPFLOP': 'FLIP FLOPS',
+  'FLIPFLOPS': 'FLIP FLOPS',
+  'JEAN': 'JEANS',
+  'JEGGINGS': 'JEGGING',
+  'LOWERS': 'LOWER',
+  'SKIRTS': 'SKIRT',
+  'SWEATERS': 'SWEATER',
+  'SWEATSHIRTS': 'SWEATSHIRT',
+  'TOPS': 'TOP',
+  'TROUSER': 'TROUSERS',
+  'BERMUDAS': 'BERMUDA',
+  'ROMPERS': 'ROMPER',
+  'CAPS': 'CAP',
+  'TOYS': 'TOY',
+  'SHORT': 'SHORTS',
+  'SETS': 'CLOTHING SET',
+  'SET': 'CLOTHING SET',
+  'SUIT SET': 'CLOTHING SET',
+  'DUNGAREES': 'DUNGAREE',
+  'JUMPSUITS': 'JUMPSUIT',
+  'CANVAS': 'CANVAS SHOES',
+  'CASUAL': 'CASUAL SHOES',
+  'CASUAL SHOE': 'CASUAL SHOES',
+  'SPORTS': 'SPORTS SHOES',
+  'SPORTS SHOE': 'SPORTS SHOES',
+  'SPORTS SANDAL': 'SPORTS SANDALS',
+  'LYCRA': 'LYCRA SHOES',
+  'MOULD': 'MOULDS',
+  'BOOTIE': 'BOOTIES'
+};
+
+const FOOTWEAR_SET = new Set([
+  'BALLERINAS', 'BOOTS', 'CANVAS SHOES', 'CASUAL SHOES', 'FASHION SANDALS', 'FLIP FLOPS', 
+  'LYCRA SHOES', 'MOULDS', 'SLIDES', 'SPORTS SANDALS', 'SPORTS SHOES', 'BOOTIES'
+]);
+
+function normalizeCategoryAndDivision(rawCat, rawDiv) {
+  let cat = String(rawCat || '').trim().toUpperCase();
+  if (CATEGORY_ALIASES[cat]) {
+    cat = CATEGORY_ALIASES[cat];
+  }
+
+  let div = String(rawDiv || '').trim().toUpperCase();
+  if (FOOTWEAR_SET.has(cat)) {
+    div = 'FOOTWEAR';
+  } else if (!['FOOTWEAR', 'APPAREL', 'ACCESSORIES'].includes(div)) {
+    div = 'APPAREL';
+  }
+
+  return { category: cat, division: div };
+}
+
+
 /**
  * Parse date from Dyno row fields:
  * formattedDate ("17 August"), parsedDate (ISO), monthName ("August"), fy ("2026")
@@ -208,14 +279,9 @@ export async function fetchAndSyncDynoData() {
         const { marketplaceId, subChannel } = mapDynoChannel(rawChannel);
 
         const rawCategory = row.categories || row.category || row.Product_Category || '';
-        const category = String(rawCategory).trim().toUpperCase();
-        if (!category) continue;
-
         const rawDivision = row.division || row.Department || '';
-        let division = String(rawDivision).trim().toUpperCase();
-        if (!['FOOTWEAR', 'APPAREL', 'ACCESSORIES'].includes(division)) {
-          division = 'APPAREL';
-        }
+        const { category, division } = normalizeCategoryAndDivision(rawCategory, rawDivision);
+        if (!category || category === 'UNKNOWN') continue;
 
         const isNew = !!(
           row.isNew || 
