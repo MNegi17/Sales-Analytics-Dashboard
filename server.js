@@ -17,6 +17,10 @@ import {
   resetAllDbData,
   isPostgres 
 } from './server/db.js';
+import { 
+  fetchAndSyncDynoData, 
+  getDynoSyncStatus 
+} from './server/dyno-sync.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,6 +30,59 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
+
+// Dyno Dashboard Supabase Real-Time Sync API
+app.get('/api/dyno/status', (req, res) => {
+  res.json({ success: true, status: getDynoSyncStatus() });
+});
+
+app.post('/api/dyno/sync', async (req, res) => {
+  try {
+    const syncResult = await fetchAndSyncDynoData();
+    if (!syncResult.success) {
+      return res.status(500).json({ success: false, error: syncResult.error });
+    }
+
+    // Save synced stats to DB
+    await saveDailyStats(syncResult.stats, 'replace');
+    
+    // Also save custom months
+    for (const m of syncResult.months) {
+      await addCustomMonth(m);
+    }
+
+    // Save summary audit log
+    if (syncResult.summary) {
+      const logEntry = {
+        id: `DYNO-SYNC-${Date.now()}`,
+        fileName: `[Dyno DB Sync] ${syncResult.summary.syncedFilesCount} Files`,
+        uploadTimestamp: new Date().toLocaleString(),
+        dateRange: syncResult.months.join(', '),
+        marketplacesDetected: ['myntra', 'amazon', 'ajio', 'nykaa', 'firstcry', 'flipkart', 'd2c'],
+        rowsProcessed: syncResult.summary.totalRecordsSynced,
+        rowsInserted: syncResult.stats.length,
+        rowsUpdated: 0,
+        rowsSkipped: 0,
+        duplicateCount: 0,
+        errorCount: 0,
+        processingTimeMs: syncResult.summary.durationMs || 0,
+        status: 'SUCCESS',
+        errors: []
+      };
+      await saveUploadLog(logEntry);
+    }
+
+    res.json({
+      success: true,
+      stats: syncResult.stats,
+      months: syncResult.months,
+      summary: syncResult.summary
+    });
+  } catch (err) {
+    console.error('Error during Dyno DB sync:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // Healthcheck
 app.get('/api/health', (req, res) => {
@@ -168,6 +225,19 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[SERVER] Sales Analytics Server running on port ${PORT}`);
   });
+
+  // Automatically trigger initial background sync from Dyno Supabase
+  fetchAndSyncDynoData()
+    .then(async (syncResult) => {
+      if (syncResult.success) {
+        await saveDailyStats(syncResult.stats, 'replace');
+        for (const m of syncResult.months) {
+          await addCustomMonth(m);
+        }
+        console.log(`[SERVER] Initial Dyno DB sync complete (${syncResult.stats.length} daily stats loaded).`);
+      }
+    })
+    .catch(err => console.error('[SERVER] Initial Dyno DB sync warning:', err.message));
 }
 
 startServer();

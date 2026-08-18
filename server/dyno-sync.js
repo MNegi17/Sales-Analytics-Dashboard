@@ -1,0 +1,293 @@
+/**
+ * Dyno Dashboard Supabase Data Connector & Real-Time Sync Engine
+ * 
+ * Securely connects to Dyno Dashboard's Supabase database (read-only consumer)
+ * to fetch uploaded sales files and live Uniware sync batches,
+ * normalizing and aggregating them into the Sales Analytics Excel spreadsheet state.
+ */
+
+const SUPABASE_URL = "https://vvruwxrhwppozvrprcix.supabase.co";
+const SUPABASE_KEY = "sb_publishable_wEN47XUvThFsrpIZcPX35A_xkPbdJQ1";
+const ADMIN_EMAIL = "manannegi17@gmail.com";
+const ADMIN_PASSWORD = "Manan@dyno@17";
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
+const SHORT_MONTH_MAP = {
+  jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+  jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
+};
+
+// Channel mapping for Dyno datasets
+function mapDynoChannel(rawChannel) {
+  if (!rawChannel) return { marketplaceId: 'myntra', subChannel: 'PPMP' };
+  const upper = String(rawChannel).trim().toUpperCase().replace(/[\s_\-]/g, '');
+
+  if (upper.includes('MYNTRASJIT') || upper.includes('SJIT')) {
+    return { marketplaceId: 'myntra', subChannel: 'SJIT' };
+  }
+  if (upper.includes('MYNTRA')) {
+    return { marketplaceId: 'myntra', subChannel: 'PPMP' };
+  }
+  if (upper.includes('COCOBLU')) {
+    return { marketplaceId: 'amazon', subChannel: 'Cocoblu' };
+  }
+  if (upper.includes('FBA')) {
+    return { marketplaceId: 'amazon', subChannel: 'FBA' };
+  }
+  if (upper.includes('AMAZON')) {
+    return { marketplaceId: 'amazon', subChannel: 'Amazon' };
+  }
+  if (upper.includes('AJIO')) {
+    return { marketplaceId: 'ajio' };
+  }
+  if (upper.includes('NYKAA')) {
+    return { marketplaceId: 'nykaa' };
+  }
+  if (upper.includes('FIRSTCRY') || upper.includes('FIRST')) {
+    return { marketplaceId: 'firstcry' };
+  }
+  if (upper.includes('FLIPKART')) {
+    return { marketplaceId: 'flipkart' };
+  }
+  if (upper.includes('D2C') || upper.includes('SHOPIFY')) {
+    return { marketplaceId: 'd2c' };
+  }
+
+  return { marketplaceId: 'myntra', subChannel: 'PPMP' };
+}
+
+/**
+ * Parse date from Dyno row fields:
+ * formattedDate ("17 August"), parsedDate (ISO), monthName ("August"), fy ("2026")
+ */
+function parseDynoRowDate(row) {
+  let year = 2026;
+  if (row.fy) {
+    const py = parseInt(String(row.fy).trim(), 10);
+    if (!isNaN(py) && py > 2000) year = py;
+  }
+
+  let day = null;
+  let monthIdx = null;
+
+  // 1. Try formattedDate (e.g. "17 August", "18 Aug", "05 September")
+  if (row.formattedDate) {
+    const parts = String(row.formattedDate).trim().split(/\s+/);
+    if (parts.length >= 2) {
+      const parsedDay = parseInt(parts[0], 10);
+      const mStr = parts[1].toLowerCase().slice(0, 3);
+      if (!isNaN(parsedDay) && SHORT_MONTH_MAP[mStr] !== undefined) {
+        day = parsedDay;
+        monthIdx = SHORT_MONTH_MAP[mStr];
+      }
+    }
+  }
+
+  // 2. Try parsedDate (ISO String)
+  if ((day === null || monthIdx === null) && row.parsedDate) {
+    const d = new Date(row.parsedDate);
+    if (!isNaN(d.getTime())) {
+      // In IST (UTC + 5:30)
+      const istOffsetMs = 5.5 * 60 * 60 * 1000;
+      const istDate = new Date(d.getTime() + istOffsetMs);
+      day = istDate.getUTCDate();
+      monthIdx = istDate.getUTCMonth();
+      year = istDate.getUTCFullYear();
+    }
+  }
+
+  // 3. Try monthName
+  if (monthIdx === null && row.monthName) {
+    const mStr = String(row.monthName).trim().toLowerCase().slice(0, 3);
+    if (SHORT_MONTH_MAP[mStr] !== undefined) {
+      monthIdx = SHORT_MONTH_MAP[mStr];
+    }
+  }
+
+  if (day === null) day = 1;
+  if (monthIdx === null) monthIdx = 7; // August default
+
+  const monthName = MONTH_NAMES[monthIdx];
+  const formattedMonth = String(monthIdx + 1).padStart(2, '0');
+  const formattedDay = String(day).padStart(2, '0');
+  const dateKey = `${year}-${formattedMonth}-${formattedDay}`;
+  const monthYearKey = `${monthName} ${year}`;
+
+  return { year, monthIdx, monthName, day, dateKey, monthYearKey };
+}
+
+let cachedAuthToken = null;
+let tokenExpiresAt = 0;
+
+async function getDynoSupabaseToken() {
+  const now = Date.now();
+  if (cachedAuthToken && now < tokenExpiresAt - 60000) {
+    return cachedAuthToken;
+  }
+
+  const authRes = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+    method: "POST",
+    headers: {
+      "apikey": SUPABASE_KEY,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD })
+  });
+
+  const authData = await authRes.json();
+  if (!authData.access_token) {
+    throw new Error(`Failed to authenticate with Dyno Supabase: ${authData.error_description || authData.message || JSON.stringify(authData)}`);
+  }
+
+  cachedAuthToken = authData.access_token;
+  tokenExpiresAt = now + (authData.expires_in || 3600) * 1000;
+  return cachedAuthToken;
+}
+
+let lastSyncState = {
+  lastSyncTime: null,
+  syncedFilesCount: 0,
+  totalRecordsSynced: 0,
+  status: 'IDLE',
+  error: null
+};
+
+export function getDynoSyncStatus() {
+  return lastSyncState;
+}
+
+export async function fetchAndSyncDynoData() {
+  const startTime = Date.now();
+  lastSyncState.status = 'SYNCING';
+
+  try {
+    const token = await getDynoSupabaseToken();
+
+    // Fetch all files from uploaded_files in Dyno Supabase
+    const filesRes = await fetch(`${SUPABASE_URL}/rest/v1/uploaded_files?select=id,name,upload_date,record_count,data&order=upload_date.desc`, {
+      headers: {
+        "apikey": SUPABASE_KEY,
+        "Authorization": `Bearer ${token}`
+      }
+    });
+
+    if (!filesRes.ok) {
+      throw new Error(`Supabase API responded with status ${filesRes.status}: ${await filesRes.text()}`);
+    }
+
+    const files = await filesRes.json();
+    if (!Array.isArray(files)) {
+      throw new Error(`Expected array of files, received: ${JSON.stringify(files)}`);
+    }
+
+    // Filter to sales files (exclude inventory-only files)
+    const salesFiles = files.filter(f => !f.name.startsWith('[INVENTORY]'));
+
+    const statMap = new Map(); // key -> stat
+    const detectedMonths = new Set();
+    let totalRawRows = 0;
+    const syncedFileSummaries = [];
+
+    for (const file of salesFiles) {
+      const rows = Array.isArray(file.data) ? file.data : [];
+      totalRawRows += rows.length;
+
+      syncedFileSummaries.push({
+        id: file.id,
+        name: file.name,
+        uploadDate: file.upload_date,
+        recordCount: rows.length
+      });
+
+      for (const row of rows) {
+        const rawChannel = row.channel_name || row.channel || row.channelName || '';
+        const { marketplaceId, subChannel } = mapDynoChannel(rawChannel);
+
+        const rawCategory = row.categories || row.category || row.Product_Category || '';
+        const category = String(rawCategory).trim().toUpperCase();
+        if (!category) continue;
+
+        const rawDivision = row.division || row.Department || '';
+        let division = String(rawDivision).trim().toUpperCase();
+        if (!['FOOTWEAR', 'APPAREL', 'ACCESSORIES'].includes(division)) {
+          division = 'APPAREL';
+        }
+
+        const isNew = !!(
+          row.isNew || 
+          row.is_new || 
+          (row.New && String(row.New).trim().toUpperCase() !== 'FALSE' && String(row.New).trim() !== '0') ||
+          (row['New Style'] && String(row['New Style']).trim().toUpperCase() !== 'FALSE')
+        );
+
+        const { year, monthName, day, dateKey, monthYearKey } = parseDynoRowDate(row);
+        detectedMonths.add(monthYearKey);
+
+        const key = `${marketplaceId}_${subChannel || 'MAIN'}_${dateKey}_${category}`;
+
+        if (!statMap.has(key)) {
+          statMap.set(key, {
+            id: key,
+            marketplaceId,
+            channelName: subChannel || marketplaceId,
+            subChannel: subChannel || undefined,
+            dateKey,
+            monthYearKey,
+            year,
+            month: monthName,
+            day,
+            category,
+            division,
+            totalUnits: 0,
+            newStyleUnits: 0
+          });
+        }
+
+        const stat = statMap.get(key);
+        stat.totalUnits += 1;
+        if (isNew) {
+          stat.newStyleUnits += 1;
+        }
+      }
+    }
+
+    const aggregatedStats = Array.from(statMap.values());
+    const duration = Date.now() - startTime;
+
+    lastSyncState = {
+      lastSyncTime: new Date().toISOString(),
+      syncedFilesCount: salesFiles.length,
+      totalRecordsSynced: totalRawRows,
+      status: 'SUCCESS',
+      error: null,
+      durationMs: duration,
+      detectedMonths: Array.from(detectedMonths),
+      files: syncedFileSummaries
+    };
+
+    console.log(`[DYNO-SYNC] Successfully synced ${salesFiles.length} files (${totalRawRows} raw rows -> ${aggregatedStats.length} daily category stats) in ${duration}ms.`);
+
+    return {
+      success: true,
+      stats: aggregatedStats,
+      months: Array.from(detectedMonths),
+      summary: lastSyncState
+    };
+
+  } catch (err) {
+    console.error('[DYNO-SYNC] Error syncing data from Dyno Supabase:', err);
+    lastSyncState = {
+      ...lastSyncState,
+      status: 'FAILED',
+      error: err.message
+    };
+    return {
+      success: false,
+      error: err.message
+    };
+  }
+}

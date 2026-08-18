@@ -3,7 +3,8 @@ import {
   DailyCategoryStat, 
   UploadBatchLog, 
   DuplicateConflict, 
-  DuplicateResolution
+  DuplicateResolution,
+  DynoSyncStatus
 } from '../types';
 import { parseSalesExcelFile } from '../engine/excel-parser';
 import { aggregateSalesData } from '../engine/processor';
@@ -18,6 +19,9 @@ interface SalesStoreState {
   customMonths: string[];
   isLoadingInitial: boolean;
   
+  // Dyno Supabase Sync State
+  dynoSyncStatus: DynoSyncStatus;
+
   // Admin Authentication State
   isAdminLoggedIn: boolean;
   adminEmail: string | null;
@@ -37,6 +41,7 @@ interface SalesStoreState {
   loginAdmin: (email: string, pass: string) => boolean;
   logoutAdmin: () => void;
   fetchInitialData: () => Promise<void>;
+  syncWithDynoDatabase: () => Promise<{ success: boolean; message: string }>;
   processUploadedFile: (file: File) => Promise<{ success: boolean; conflict?: DuplicateConflict; message?: string }>;
   applyDuplicateResolution: (resolution: DuplicateResolution) => Promise<void>;
   deleteUploadLog: (logId: string) => Promise<void>;
@@ -66,6 +71,14 @@ export const useSalesStore = create<SalesStoreState>((set, get) => ({
   customMonths: ['May 2026', 'June 2026', 'July 2026', 'August 2026'],
   isLoadingInitial: false,
   
+  dynoSyncStatus: {
+    isSyncing: false,
+    lastSyncTime: null,
+    syncedFilesCount: 0,
+    totalRecordsSynced: 0,
+    error: null
+  },
+
   isAdminLoggedIn: storedAdmin ? true : false,
   adminEmail: storedAdmin || null,
 
@@ -96,14 +109,63 @@ export const useSalesStore = create<SalesStoreState>((set, get) => ({
     set({ isAdminLoggedIn: false, adminEmail: null });
   },
 
+  syncWithDynoDatabase: async () => {
+    set(state => ({
+      dynoSyncStatus: { ...state.dynoSyncStatus, isSyncing: true, error: null }
+    }));
+    try {
+      const res = await fetch('/api/dyno/sync', { method: 'POST' }).then(r => r.json());
+      if (res?.success && Array.isArray(res.stats)) {
+        const updatedMonths = Array.from(new Set([...get().customMonths, ...(res.months || [])]));
+        const latestMonth = res.stats.length > 0 ? res.stats[res.stats.length - 1].monthYearKey : get().selectedMonthYear;
+
+        // Refresh upload logs as well
+        const logsRes = await fetch('/api/logs').then(r => r.json()).catch(() => null);
+        const uploadLogs = logsRes?.success ? logsRes.logs : get().uploadLogs;
+
+        set({
+          dailyStats: res.stats,
+          uploadLogs,
+          customMonths: updatedMonths,
+          selectedMonthYear: updatedMonths.includes('August 2026') ? 'August 2026' : (latestMonth || get().selectedMonthYear),
+          dynoSyncStatus: {
+            isSyncing: false,
+            lastSyncTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            syncedFilesCount: res.summary?.syncedFilesCount || 0,
+            totalRecordsSynced: res.summary?.totalRecordsSynced || 0,
+            error: null
+          }
+        });
+
+        return { 
+          success: true, 
+          message: `Successfully synced ${res.summary?.syncedFilesCount || 0} files (${res.summary?.totalRecordsSynced || 0} records) from Dyno DB!` 
+        };
+      } else {
+        const errMsg = res?.error || 'Sync failed';
+        set(state => ({
+          dynoSyncStatus: { ...state.dynoSyncStatus, isSyncing: false, error: errMsg }
+        }));
+        return { success: false, message: errMsg };
+      }
+    } catch (err: any) {
+      const errMsg = err?.message || 'Sync connection error';
+      set(state => ({
+        dynoSyncStatus: { ...state.dynoSyncStatus, isSyncing: false, error: errMsg }
+      }));
+      return { success: false, message: errMsg };
+    }
+  },
+
   fetchInitialData: async () => {
     set({ isLoadingInitial: true });
     try {
-      const [statsRes, logsRes, stylesRes, monthsRes] = await Promise.all([
+      const [statsRes, logsRes, stylesRes, monthsRes, dynoStatusRes] = await Promise.all([
         fetch('/api/stats').then(r => r.json()).catch(() => null),
         fetch('/api/logs').then(r => r.json()).catch(() => null),
         fetch('/api/style-counts').then(r => r.json()).catch(() => null),
-        fetch('/api/months').then(r => r.json()).catch(() => null)
+        fetch('/api/months').then(r => r.json()).catch(() => null),
+        fetch('/api/dyno/status').then(r => r.json()).catch(() => null)
       ]);
 
       const dailyStats = statsRes?.success ? statsRes.stats : get().dailyStats;
@@ -112,15 +174,29 @@ export const useSalesStore = create<SalesStoreState>((set, get) => ({
       const customMonths = monthsRes?.success ? monthsRes.months : get().customMonths;
 
       const latestMonth = dailyStats.length > 0 ? dailyStats[dailyStats.length - 1].monthYearKey : get().selectedMonthYear;
+      
+      const dynoStatus = dynoStatusRes?.success && dynoStatusRes.status ? {
+        isSyncing: dynoStatusRes.status.status === 'SYNCING',
+        lastSyncTime: dynoStatusRes.status.lastSyncTime ? new Date(dynoStatusRes.status.lastSyncTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null,
+        syncedFilesCount: dynoStatusRes.status.syncedFilesCount || 0,
+        totalRecordsSynced: dynoStatusRes.status.totalRecordsSynced || 0,
+        error: dynoStatusRes.status.error || null
+      } : get().dynoSyncStatus;
 
       set({
         dailyStats,
         uploadLogs,
         myntraStyleCounts,
         customMonths,
-        selectedMonthYear: customMonths.includes(latestMonth) ? latestMonth : customMonths[customMonths.length - 1] || 'August 2026',
+        selectedMonthYear: customMonths.includes('August 2026') ? 'August 2026' : (customMonths.includes(latestMonth) ? latestMonth : customMonths[customMonths.length - 1] || 'August 2026'),
+        dynoSyncStatus: dynoStatus,
         isLoadingInitial: false
       });
+
+      // If dailyStats is empty on initial load, auto-trigger Dyno DB sync
+      if (!dailyStats || dailyStats.length === 0) {
+        get().syncWithDynoDatabase();
+      }
     } catch (err) {
       console.error('Error fetching initial data from backend API:', err);
       set({ isLoadingInitial: false });

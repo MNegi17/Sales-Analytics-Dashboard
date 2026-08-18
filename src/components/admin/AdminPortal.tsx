@@ -3,15 +3,29 @@ import { useSalesStore } from '../../store/useSalesStore';
 import { AdminLoginForm } from './AdminLoginForm';
 import { UploadHistoryTable } from '../history/UploadHistoryTable';
 import { UploadModal } from '../upload/UploadModal';
-import { ShieldCheck, Upload, LogOut, Database, FileSpreadsheet } from 'lucide-react';
+import { ShieldCheck, Upload, LogOut, Database, FileSpreadsheet, RefreshCw, Zap, CheckCircle2 } from 'lucide-react';
 
 export const AdminPortal: React.FC = () => {
-  const { isAdminLoggedIn, adminEmail, logoutAdmin } = useSalesStore();
+  const { 
+    isAdminLoggedIn, 
+    adminEmail, 
+    logoutAdmin, 
+    dynoSyncStatus, 
+    syncWithDynoDatabase 
+  } = useSalesStore();
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
 
   if (!isAdminLoggedIn) {
     return <AdminLoginForm />;
   }
+
+  const handleManualDynoSync = async () => {
+    setSyncFeedback(null);
+    const res = await syncWithDynoDatabase();
+    setSyncFeedback(res.message);
+    setTimeout(() => setSyncFeedback(null), 5000);
+  };
 
   return (
     <div className="space-y-8 pb-12">
@@ -32,11 +46,20 @@ export const AdminPortal: React.FC = () => {
 
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           <button
+            onClick={handleManualDynoSync}
+            disabled={dynoSyncStatus.isSyncing}
+            className="flex-1 md:flex-none px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 active:scale-98 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center space-x-2"
+          >
+            <RefreshCw className={`w-4 h-4 ${dynoSyncStatus.isSyncing ? 'animate-spin' : ''}`} />
+            <span>{dynoSyncStatus.isSyncing ? 'Syncing Dyno DB...' : 'Sync Dyno Database'}</span>
+          </button>
+
+          <button
             onClick={() => setIsUploadOpen(true)}
-            className="flex-1 md:flex-none px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 active:scale-98 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center space-x-2"
+            className="flex-1 md:flex-none px-4 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 active:scale-98 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center space-x-2"
           >
             <Upload className="w-4 h-4" />
-            <span>Upload New Sales Report</span>
+            <span>Upload New Report</span>
           </button>
 
           <button
@@ -50,9 +73,54 @@ export const AdminPortal: React.FC = () => {
 
       </div>
 
+      {syncFeedback && (
+        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-800 flex items-center space-x-2 shadow-xs">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+          <span>{syncFeedback}</span>
+        </div>
+      )}
+
       {/* Action Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         
+        {/* Dyno Database Pipeline Card */}
+        <div className="clean-panel p-6 rounded-2xl border border-purple-200/80 bg-purple-50/20 shadow-xs space-y-4">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-xl bg-purple-100 border border-purple-200 text-purple-700 flex items-center justify-center font-bold">
+              <Zap className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Dyno DB Real-Time Pipeline</h3>
+              <p className="text-xs text-slate-500">Live Supabase Database Connection</p>
+            </div>
+          </div>
+          <p className="text-xs text-slate-600 leading-relaxed">
+            Directly pulls all sales files and Uniware 24/7 real-time sync batches uploaded to Dyno Dashboard without manual work.
+          </p>
+          <div className="space-y-1.5 pt-1 text-[11px] font-mono">
+            <div className="flex items-center justify-between text-slate-600">
+              <span>Synced Files:</span>
+              <strong className="text-purple-900">{dynoSyncStatus.syncedFilesCount}</strong>
+            </div>
+            <div className="flex items-center justify-between text-slate-600">
+              <span>Raw Records:</span>
+              <strong className="text-purple-900">{dynoSyncStatus.totalRecordsSynced.toLocaleString()}</strong>
+            </div>
+            <div className="flex items-center justify-between text-slate-600">
+              <span>Last Synced:</span>
+              <span className="text-slate-800 font-semibold">{dynoSyncStatus.lastSyncTime || 'Pending'}</span>
+            </div>
+          </div>
+          <button
+            onClick={handleManualDynoSync}
+            disabled={dynoSyncStatus.isSyncing}
+            className="w-full py-2.5 px-4 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center space-x-2"
+          >
+            <RefreshCw className={`w-4 h-4 ${dynoSyncStatus.isSyncing ? 'animate-spin' : ''}`} />
+            <span>{dynoSyncStatus.isSyncing ? 'Syncing Records...' : 'Pull Latest from Dyno DB'}</span>
+          </button>
+        </div>
+
         {/* Upload Action Card */}
         <div className="clean-panel p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
           <div className="flex items-center space-x-3">
@@ -60,13 +128,14 @@ export const AdminPortal: React.FC = () => {
               <Upload className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900">Ingest Raw Sales Report</h3>
-              <p className="text-xs text-slate-500">Upload new marketplace Excel files into PostgreSQL</p>
+              <h3 className="text-sm font-bold text-slate-900">Ingest Local Excel Report</h3>
+              <p className="text-xs text-slate-500">Upload standalone sales Excel file</p>
             </div>
           </div>
           <p className="text-xs text-slate-600 leading-relaxed">
-            Data uploads are strictly restricted to this admin workspace to guarantee data integrity across all 7 marketplace dashboards.
+            You can also drag-and-drop standalone daily or multi-day sales files directly if needed.
           </p>
+          <div className="h-9" />
           <button
             onClick={() => setIsUploadOpen(true)}
             className="w-full py-2.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center space-x-2"
@@ -83,12 +152,12 @@ export const AdminPortal: React.FC = () => {
               <FileSpreadsheet className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900">Batch Ingestion Audit &amp; Controls</h3>
-              <p className="text-xs text-slate-500">Manage individual file upload logs</p>
+              <h3 className="text-sm font-bold text-slate-900">Batch Ingestion Audit</h3>
+              <p className="text-xs text-slate-500">Audit logs &amp; batch controls</p>
             </div>
           </div>
           <p className="text-xs text-slate-600 leading-relaxed">
-            Review uploaded files below. You can delete specific ingestion batches individually from the Audit History table to maintain precise data control.
+            Review uploaded files below. You can delete specific ingestion batches individually from the Audit History table.
           </p>
           <div className="px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-[11px] font-semibold text-slate-700 flex items-center justify-between">
             <span>Granular Batch Deletion Enabled</span>

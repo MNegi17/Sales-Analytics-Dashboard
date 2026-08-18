@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu, X, BarChart2, Layers, Download, Lock, Sparkles, ShieldCheck } from 'lucide-react';
+import { Menu, X, BarChart2, Layers, Download, Lock, Sparkles, ShieldCheck, RefreshCw, Zap } from 'lucide-react';
 import { useSalesStore } from '../../store/useSalesStore';
 
 export type ActiveTab = 'landing' | 'dashboard' | 'myntra-editor' | 'export' | 'admin';
@@ -16,11 +16,15 @@ export const Navbar: React.FC<NavbarProps> = ({
   totalRecordsCount
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { isAdminLoggedIn } = useSalesStore();
+  const { isAdminLoggedIn, dynoSyncStatus, syncWithDynoDatabase } = useSalesStore();
 
   const handleNavClick = (tab: ActiveTab) => {
     setActiveTab(tab);
     setIsMobileMenuOpen(false);
+  };
+
+  const handleDynoSync = async () => {
+    await syncWithDynoDatabase();
   };
 
   return (
@@ -102,8 +106,32 @@ export const Navbar: React.FC<NavbarProps> = ({
           </nav>
 
           {/* Right Action */}
-          <div className="flex items-center space-x-2 sm:space-x-3">
-            <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-slate-100 border border-slate-200 text-xs text-slate-700 font-mono font-medium">
+          <div className="flex items-center space-x-2 sm:space-x-2.5">
+            
+            {/* Dyno Database Live Sync Button */}
+            <button
+              onClick={handleDynoSync}
+              disabled={dynoSyncStatus.isSyncing}
+              title={dynoSyncStatus.lastSyncTime ? `Dyno DB Connected. Last synced at ${dynoSyncStatus.lastSyncTime} (${dynoSyncStatus.syncedFilesCount} files)` : 'Sync with Dyno Dashboard Supabase DB'}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center space-x-1.5 shadow-xs ${
+                dynoSyncStatus.isSyncing 
+                  ? 'bg-amber-50 text-amber-700 border-amber-300 animate-pulse' 
+                  : dynoSyncStatus.error 
+                    ? 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100' 
+                    : 'bg-purple-50 hover:bg-purple-100 active:scale-98 text-purple-700 border-purple-200'
+              }`}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${dynoSyncStatus.isSyncing ? 'animate-spin text-amber-600' : 'text-purple-600'}`} />
+              <span className="hidden sm:inline">
+                {dynoSyncStatus.isSyncing ? 'Syncing Dyno DB...' : dynoSyncStatus.lastSyncTime ? `Dyno Synced (${dynoSyncStatus.lastSyncTime})` : 'Sync Dyno DB'}
+              </span>
+              <span className="sm:hidden">
+                {dynoSyncStatus.isSyncing ? 'Syncing...' : 'Sync'}
+              </span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            </button>
+
+            <div className="hidden lg:flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-slate-100 border border-slate-200 text-xs text-slate-700 font-mono font-medium">
               <span>Records:</span>
               <strong className="text-slate-900">{totalRecordsCount}</strong>
             </div>

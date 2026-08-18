@@ -103,3 +103,12 @@ export interface AnalyticsTrendPoint {
   d2c: number;
   total: number;
 }
+
+export interface DynoSyncStatus {
+  isSyncing: boolean;
+  lastSyncTime: string | null;
+  syncedFilesCount: number;
+  totalRecordsSynced: number;
+  error: string | null;
+}
+
