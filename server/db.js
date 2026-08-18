@@ -116,7 +116,9 @@ export async function getDailyStats() {
 
 export async function saveDailyStats(stats, resolution = 'replace') {
   if (!isPostgres) {
-    if (resolution === 'replace') {
+    if (resolution === 'full-replace') {
+      inMemoryDb.dailyStats = [...stats];
+    } else if (resolution === 'replace') {
       const keysToReplace = new Set(stats.map(s => `${s.marketplaceId}_${s.dateKey}_${s.subChannel || ''}_${s.category}`));
       inMemoryDb.dailyStats = inMemoryDb.dailyStats.filter(s => !keysToReplace.has(`${s.marketplaceId}_${s.dateKey}_${s.subChannel || ''}_${s.category}`));
       inMemoryDb.dailyStats.push(...stats);
@@ -142,6 +144,10 @@ export async function saveDailyStats(stats, resolution = 'replace') {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    if (resolution === 'full-replace') {
+      await client.query('TRUNCATE TABLE daily_stats RESTART IDENTITY');
+    }
 
     for (const s of stats) {
       const statId = s.id || `${s.marketplaceId}_${s.dateKey}_${s.subChannel || 'MAIN'}_${s.category}`;

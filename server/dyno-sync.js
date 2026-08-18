@@ -23,13 +23,13 @@ const SHORT_MONTH_MAP = {
 
 // Channel mapping for Dyno datasets
 function mapDynoChannel(rawChannel) {
-  if (!rawChannel) return { marketplaceId: 'myntra', subChannel: 'PPMP' };
+  if (!rawChannel) return null;
   const upper = String(rawChannel).trim().toUpperCase().replace(/[\s_\-]/g, '');
 
-  if (upper.includes('MYNTRASJIT') || upper.includes('SJIT')) {
+  if (upper.includes('MYNTRASJIT') || upper.includes('MYNTASJIT') || upper.includes('SJIT')) {
     return { marketplaceId: 'myntra', subChannel: 'SJIT' };
   }
-  if (upper.includes('MYNTRA')) {
+  if (upper.includes('MYNTRA') || upper.includes('MYNTA')) {
     return { marketplaceId: 'myntra', subChannel: 'PPMP' };
   }
   if (upper.includes('COCOBLU')) {
@@ -42,22 +42,22 @@ function mapDynoChannel(rawChannel) {
     return { marketplaceId: 'amazon', subChannel: 'Amazon' };
   }
   if (upper.includes('AJIO')) {
-    return { marketplaceId: 'ajio' };
+    return { marketplaceId: 'ajio', subChannel: 'Ajio' };
   }
   if (upper.includes('NYKAA')) {
-    return { marketplaceId: 'nykaa' };
+    return { marketplaceId: 'nykaa', subChannel: 'Nykaa' };
   }
   if (upper.includes('FIRSTCRY') || upper.includes('FIRST')) {
-    return { marketplaceId: 'firstcry' };
+    return { marketplaceId: 'firstcry', subChannel: 'FirstCry' };
   }
   if (upper.includes('FLIPKART')) {
-    return { marketplaceId: 'flipkart' };
+    return { marketplaceId: 'flipkart', subChannel: 'Flipkart' };
   }
-  if (upper.includes('D2C') || upper.includes('SHOPIFY')) {
-    return { marketplaceId: 'd2c' };
+  if (upper.includes('D2C') || upper.includes('SHOPIFY') || upper.includes('MAGENTO') || upper.includes('PUSPL')) {
+    return { marketplaceId: 'd2c', subChannel: 'D2C' };
   }
 
-  return { marketplaceId: 'myntra', subChannel: 'PPMP' };
+  return null;
 }
 
 const CATEGORY_ALIASES = {
@@ -194,7 +194,7 @@ function parseDynoRowDate(row) {
 let cachedAuthToken = null;
 let tokenExpiresAt = 0;
 
-async function getDynoSupabaseToken() {
+export async function getDynoSupabaseToken() {
   const now = Date.now();
   if (cachedAuthToken && now < tokenExpiresAt - 60000) {
     return cachedAuthToken;
@@ -255,8 +255,8 @@ export async function fetchAndSyncDynoData() {
       throw new Error(`Expected array of files, received: ${JSON.stringify(files)}`);
     }
 
-    // Filter to sales files (exclude inventory-only files)
-    const salesFiles = files.filter(f => !f.name.startsWith('[INVENTORY]'));
+    // Filter to sales files (exclude inventory and launch date reference files)
+    const salesFiles = files.filter(f => !f.name.startsWith('[INVENTORY]') && !f.name.startsWith('[LAUNCH_DATES]'));
 
     const statMap = new Map(); // key -> stat
     const detectedMonths = new Set();
@@ -265,6 +265,7 @@ export async function fetchAndSyncDynoData() {
 
     for (const file of salesFiles) {
       const rows = Array.isArray(file.data) ? file.data : [];
+      if (rows.length === 0) continue;
       totalRawRows += rows.length;
 
       syncedFileSummaries.push({
@@ -275,8 +276,9 @@ export async function fetchAndSyncDynoData() {
       });
 
       for (const row of rows) {
-        const rawChannel = row.channel_name || row.channel || row.channelName || '';
-        const { marketplaceId, subChannel } = mapDynoChannel(rawChannel);
+        const rawChannel = row.channel_name ?? row.channel ?? row.channelName ?? row.Channel ?? row['Channel Name'] ?? row.marketplace ?? row.Marketplace ?? row.Store ?? row.source;
+        const chan = mapDynoChannel(rawChannel);
+        if (!chan) continue; // Skip non-marketplace / unmapped channel rows
 
         const rawCategory = row.categories || row.category || row.Product_Category || '';
         const rawDivision = row.division || row.Department || '';
@@ -293,14 +295,14 @@ export async function fetchAndSyncDynoData() {
         const { year, monthName, day, dateKey, monthYearKey } = parseDynoRowDate(row);
         detectedMonths.add(monthYearKey);
 
-        const key = `${marketplaceId}_${subChannel || 'MAIN'}_${dateKey}_${category}`;
+        const key = `${chan.marketplaceId}_${dateKey}_${chan.subChannel || 'MAIN'}_${category}`;
 
         if (!statMap.has(key)) {
           statMap.set(key, {
             id: key,
-            marketplaceId,
-            channelName: subChannel || marketplaceId,
-            subChannel: subChannel || undefined,
+            marketplaceId: chan.marketplaceId,
+            channelName: chan.subChannel || chan.marketplaceId,
+            subChannel: chan.subChannel || undefined,
             dateKey,
             monthYearKey,
             year,

@@ -43,8 +43,8 @@ app.post('/api/dyno/sync', async (req, res) => {
       return res.status(500).json({ success: false, error: syncResult.error });
     }
 
-    // Save synced stats to DB
-    await saveDailyStats(syncResult.stats, 'replace');
+    // Save synced stats to DB (clean full replace)
+    await saveDailyStats(syncResult.stats, 'full-replace');
     
     // Also save custom months
     for (const m of syncResult.months) {
@@ -230,7 +230,7 @@ async function startServer() {
   fetchAndSyncDynoData()
     .then(async (syncResult) => {
       if (syncResult.success) {
-        await saveDailyStats(syncResult.stats, 'replace');
+        await saveDailyStats(syncResult.stats, 'full-replace');
         for (const m of syncResult.months) {
           await addCustomMonth(m);
         }
