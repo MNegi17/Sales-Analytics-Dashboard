@@ -38,13 +38,18 @@ app.get('/api/dyno/status', (req, res) => {
 
 app.post('/api/dyno/sync', async (req, res) => {
   try {
-    const syncResult = await fetchAndSyncDynoData();
+    const mode = req.body?.mode || 'full'; // 'live', 'recent', 'full'
+    const syncResult = await fetchAndSyncDynoData(mode);
     if (!syncResult.success) {
       return res.status(500).json({ success: false, error: syncResult.error });
     }
 
-    // Save synced stats to DB (clean full replace)
-    await saveDailyStats(syncResult.stats, 'full-replace');
+    // Save synced stats to DB
+    if (mode === 'full') {
+      await saveDailyStats(syncResult.stats, 'full-replace');
+    } else {
+      await saveDailyStats(syncResult.stats, 'replace');
+    }
     
     // Also save custom months
     for (const m of syncResult.months) {
@@ -53,9 +58,10 @@ app.post('/api/dyno/sync', async (req, res) => {
 
     // Save summary audit log
     if (syncResult.summary) {
+      const modeLabel = mode === 'live' ? 'Live Real-Time' : (mode === 'recent' ? 'Recent (5 Days)' : 'Full Database');
       const logEntry = {
         id: `DYNO-SYNC-${Date.now()}`,
-        fileName: `[Dyno DB Sync] ${syncResult.summary.syncedFilesCount} Files`,
+        fileName: `[Dyno ${modeLabel} Sync] ${syncResult.summary.syncedFilesCount} Files`,
         uploadTimestamp: new Date().toLocaleString(),
         dateRange: syncResult.months.join(', '),
         marketplacesDetected: ['myntra', 'amazon', 'ajio', 'nykaa', 'firstcry', 'flipkart', 'd2c'],
@@ -72,14 +78,18 @@ app.post('/api/dyno/sync', async (req, res) => {
       await saveUploadLog(logEntry);
     }
 
+    // Return the full consolidated daily stats from DB
+    const allStats = await getDailyStats();
+
     res.json({
       success: true,
-      stats: syncResult.stats,
+      stats: allStats,
+      mode,
       months: syncResult.months,
       summary: syncResult.summary
     });
   } catch (err) {
-    console.error('Error during Dyno DB sync:', err);
+    console.error('[API] Dyno sync error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });

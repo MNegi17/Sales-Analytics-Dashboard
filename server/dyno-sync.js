@@ -222,24 +222,74 @@ export async function getDynoSupabaseToken() {
 let lastSyncState = {
   lastSyncTime: null,
   syncedFilesCount: 0,
-  totalRecordsSynced: 0,
+    totalRecordsSynced: 0,
   status: 'IDLE',
   error: null
 };
+
+let cachedSkuLaunchMap = null;
+let launchMapExpiresAt = 0;
+
+async function getSkuLaunchMap(token) {
+  const now = Date.now();
+  if (cachedSkuLaunchMap && now < launchMapExpiresAt) {
+    return cachedSkuLaunchMap;
+  }
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/uploaded_files?select=id,name,data&name=eq.[LAUNCH_DATES] SKU Live Dates.xlsx`, {
+      headers: {
+        "apikey": SUPABASE_KEY,
+        "Authorization": `Bearer ${token}`
+      }
+    });
+
+    const files = await res.json();
+    const map = new Map();
+    if (Array.isArray(files) && files.length > 0 && Array.isArray(files[0].data)) {
+      files[0].data.forEach(r => {
+        if (r.sku && r.live_date) {
+          map.set(String(r.sku).trim().toUpperCase(), new Date(r.live_date));
+        }
+      });
+    }
+
+    cachedSkuLaunchMap = map;
+    launchMapExpiresAt = now + 6 * 60 * 60 * 1000; // Cache for 6 hours
+    return map;
+  } catch (err) {
+    console.warn('[DYNO-SYNC] Warning: Could not fetch launch dates master catalog:', err.message);
+    return new Map();
+  }
+}
 
 export function getDynoSyncStatus() {
   return lastSyncState;
 }
 
-export async function fetchAndSyncDynoData() {
+/**
+ * Fetch and sync Dyno Data with 3 modes:
+ * - 'full': Ingests entire historical database (all files)
+ * - 'recent': Ingests files uploaded in the last 5 days
+ * - 'live': Ingests real-time batches and today's files (< 48 hrs)
+ */
+export async function fetchAndSyncDynoData(mode = 'full') {
   const startTime = Date.now();
   lastSyncState.status = 'SYNCING';
 
   try {
     const token = await getDynoSupabaseToken();
+    const skuLaunchMap = await getSkuLaunchMap(token);
 
-    // Fetch all files from uploaded_files in Dyno Supabase
-    const filesRes = await fetch(`${SUPABASE_URL}/rest/v1/uploaded_files?select=id,name,upload_date,record_count,data&order=upload_date.desc`, {
+    let queryUrl = `${SUPABASE_URL}/rest/v1/uploaded_files?select=id,name,upload_date,record_count,data&order=upload_date.desc`;
+
+    if (mode === 'live') {
+      queryUrl += `&limit=15`;
+    } else if (mode === 'recent') {
+      queryUrl += `&limit=35`;
+    }
+
+    const filesRes = await fetch(queryUrl, {
       headers: {
         "apikey": SUPABASE_KEY,
         "Authorization": `Bearer ${token}`
@@ -256,7 +306,17 @@ export async function fetchAndSyncDynoData() {
     }
 
     // Filter to sales files (exclude inventory and launch date reference files)
-    const salesFiles = files.filter(f => !f.name.startsWith('[INVENTORY]') && !f.name.startsWith('[LAUNCH_DATES]'));
+    let salesFiles = files.filter(f => !f.name.startsWith('[INVENTORY]') && !f.name.startsWith('[LAUNCH_DATES]'));
+
+    if (mode === 'live') {
+      // In live mode, only process files uploaded in the last 48 hours or marked as [REALTIME_SYNC]
+      const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+      salesFiles = salesFiles.filter(f => f.name.includes('[REALTIME_SYNC]') || f.upload_date >= twoDaysAgo);
+    } else if (mode === 'recent') {
+      // In recent mode, process files uploaded in the last 5 days
+      const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+      salesFiles = salesFiles.filter(f => f.upload_date >= fiveDaysAgo || f.name.includes('[REALTIME_SYNC]'));
+    }
 
     const statMap = new Map(); // key -> stat
     const detectedMonths = new Set();
@@ -285,15 +345,21 @@ export async function fetchAndSyncDynoData() {
         const { category, division } = normalizeCategoryAndDivision(rawCategory, rawDivision);
         if (!category || category === 'UNKNOWN') continue;
 
+        const { year, monthName, day, dateKey, monthYearKey } = parseDynoRowDate(row);
+        detectedMonths.add(monthYearKey);
+
+        // Check if SKU is a "New Style" (launched in the current financial year >= April 1 of year)
+        const skuKey = String(row.item_color || row.itemSku || row.sku || '').trim().toUpperCase();
+        const liveDate = skuLaunchMap.get(skuKey);
+        const fiscalYearStart = new Date(`${year}-04-01`);
+
         const isNew = !!(
           row.isNew || 
           row.is_new || 
           (row.New && String(row.New).trim().toUpperCase() !== 'FALSE' && String(row.New).trim() !== '0') ||
-          (row['New Style'] && String(row['New Style']).trim().toUpperCase() !== 'FALSE')
+          (row['New Style'] && String(row['New Style']).trim().toUpperCase() !== 'FALSE') ||
+          (liveDate && liveDate >= fiscalYearStart)
         );
-
-        const { year, monthName, day, dateKey, monthYearKey } = parseDynoRowDate(row);
-        detectedMonths.add(monthYearKey);
 
         const key = `${chan.marketplaceId}_${dateKey}_${chan.subChannel || 'MAIN'}_${category}`;
 
@@ -332,16 +398,18 @@ export async function fetchAndSyncDynoData() {
       totalRecordsSynced: totalRawRows,
       status: 'SUCCESS',
       error: null,
+      mode,
       durationMs: duration,
       detectedMonths: Array.from(detectedMonths),
       files: syncedFileSummaries
     };
 
-    console.log(`[DYNO-SYNC] Successfully synced ${salesFiles.length} files (${totalRawRows} raw rows -> ${aggregatedStats.length} daily category stats) in ${duration}ms.`);
+    console.log(`[DYNO-SYNC] [Mode: ${mode}] Synced ${salesFiles.length} files (${totalRawRows} raw rows -> ${aggregatedStats.length} daily category stats) in ${duration}ms.`);
 
     return {
       success: true,
       stats: aggregatedStats,
+      mode,
       months: Array.from(detectedMonths),
       summary: lastSyncState
     };
@@ -350,7 +418,7 @@ export async function fetchAndSyncDynoData() {
     console.error('[DYNO-SYNC] Error syncing data from Dyno Supabase:', err);
     lastSyncState = {
       ...lastSyncState,
-      status: 'FAILED',
+      status: 'ERROR',
       error: err.message
     };
     return {

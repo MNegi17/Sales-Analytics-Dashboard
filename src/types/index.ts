@@ -106,6 +106,7 @@ export interface AnalyticsTrendPoint {
 
 export interface DynoSyncStatus {
   isSyncing: boolean;
+  activeMode?: 'live' | 'recent' | 'full' | null;
   lastSyncTime: string | null;
   syncedFilesCount: number;
   totalRecordsSynced: number;

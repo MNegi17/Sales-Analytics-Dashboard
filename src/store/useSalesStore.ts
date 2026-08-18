@@ -41,7 +41,7 @@ interface SalesStoreState {
   loginAdmin: (email: string, pass: string) => boolean;
   logoutAdmin: () => void;
   fetchInitialData: () => Promise<void>;
-  syncWithDynoDatabase: () => Promise<{ success: boolean; message: string }>;
+  syncWithDynoDatabase: (mode?: 'live' | 'recent' | 'full') => Promise<{ success: boolean; message: string }>;
   processUploadedFile: (file: File) => Promise<{ success: boolean; conflict?: DuplicateConflict; message?: string }>;
   applyDuplicateResolution: (resolution: DuplicateResolution) => Promise<void>;
   deleteUploadLog: (logId: string) => Promise<void>;
@@ -109,12 +109,17 @@ export const useSalesStore = create<SalesStoreState>((set, get) => ({
     set({ isAdminLoggedIn: false, adminEmail: null });
   },
 
-  syncWithDynoDatabase: async () => {
+  syncWithDynoDatabase: async (mode: 'live' | 'recent' | 'full' = 'live') => {
     set(state => ({
-      dynoSyncStatus: { ...state.dynoSyncStatus, isSyncing: true, error: null }
+      dynoSyncStatus: { ...state.dynoSyncStatus, isSyncing: true, activeMode: mode, error: null }
     }));
     try {
-      const res = await fetch('/api/dyno/sync', { method: 'POST' }).then(r => r.json());
+      const res = await fetch('/api/dyno/sync', { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode })
+      }).then(r => r.json());
+
       if (res?.success && Array.isArray(res.stats)) {
         const updatedMonths = Array.from(new Set([...get().customMonths, ...(res.months || [])]));
         const latestMonth = res.stats.length > 0 ? res.stats[res.stats.length - 1].monthYearKey : get().selectedMonthYear;
@@ -123,6 +128,8 @@ export const useSalesStore = create<SalesStoreState>((set, get) => ({
         const logsRes = await fetch('/api/logs').then(r => r.json()).catch(() => null);
         const uploadLogs = logsRes?.success ? logsRes.logs : get().uploadLogs;
 
+        const modeLabel = mode === 'live' ? 'Live Real-Time Orders' : (mode === 'recent' ? 'Recent Files (Last 5 Days)' : 'Full Database');
+
         set({
           dailyStats: res.stats,
           uploadLogs,
@@ -130,6 +137,7 @@ export const useSalesStore = create<SalesStoreState>((set, get) => ({
           selectedMonthYear: updatedMonths.includes('August 2026') ? 'August 2026' : (latestMonth || get().selectedMonthYear),
           dynoSyncStatus: {
             isSyncing: false,
+            activeMode: null,
             lastSyncTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             syncedFilesCount: res.summary?.syncedFilesCount || 0,
             totalRecordsSynced: res.summary?.totalRecordsSynced || 0,
@@ -139,19 +147,19 @@ export const useSalesStore = create<SalesStoreState>((set, get) => ({
 
         return { 
           success: true, 
-          message: `Successfully synced ${res.summary?.syncedFilesCount || 0} files (${res.summary?.totalRecordsSynced || 0} records) from Dyno DB!` 
+          message: `Successfully synced ${modeLabel} (${res.summary?.syncedFilesCount || 0} files, ${res.summary?.totalRecordsSynced || 0} records)!` 
         };
       } else {
         const errMsg = res?.error || 'Sync failed';
         set(state => ({
-          dynoSyncStatus: { ...state.dynoSyncStatus, isSyncing: false, error: errMsg }
+          dynoSyncStatus: { ...state.dynoSyncStatus, isSyncing: false, activeMode: null, error: errMsg }
         }));
         return { success: false, message: errMsg };
       }
     } catch (err: any) {
       const errMsg = err?.message || 'Sync connection error';
       set(state => ({
-        dynoSyncStatus: { ...state.dynoSyncStatus, isSyncing: false, error: errMsg }
+        dynoSyncStatus: { ...state.dynoSyncStatus, isSyncing: false, activeMode: null, error: errMsg }
       }));
       return { success: false, message: errMsg };
     }
@@ -177,6 +185,7 @@ export const useSalesStore = create<SalesStoreState>((set, get) => ({
       
       const dynoStatus = dynoStatusRes?.success && dynoStatusRes.status ? {
         isSyncing: dynoStatusRes.status.status === 'SYNCING',
+        activeMode: dynoStatusRes.status.mode || null,
         lastSyncTime: dynoStatusRes.status.lastSyncTime ? new Date(dynoStatusRes.status.lastSyncTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null,
         syncedFilesCount: dynoStatusRes.status.syncedFilesCount || 0,
         totalRecordsSynced: dynoStatusRes.status.totalRecordsSynced || 0,
@@ -192,11 +201,6 @@ export const useSalesStore = create<SalesStoreState>((set, get) => ({
         dynoSyncStatus: dynoStatus,
         isLoadingInitial: false
       });
-
-      // If dailyStats is empty on initial load, auto-trigger Dyno DB sync
-      if (!dailyStats || dailyStats.length === 0) {
-        get().syncWithDynoDatabase();
-      }
     } catch (err) {
       console.error('Error fetching initial data from backend API:', err);
       set({ isLoadingInitial: false });

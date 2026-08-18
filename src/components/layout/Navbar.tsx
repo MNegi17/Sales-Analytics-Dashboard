@@ -23,8 +23,12 @@ export const Navbar: React.FC<NavbarProps> = ({
     setIsMobileMenuOpen(false);
   };
 
-  const handleDynoSync = async () => {
-    await syncWithDynoDatabase();
+  const handleSyncLive = async () => {
+    await syncWithDynoDatabase('live');
+  };
+
+  const handleSyncRecent = async () => {
+    await syncWithDynoDatabase('recent');
   };
 
   return (
@@ -106,32 +110,46 @@ export const Navbar: React.FC<NavbarProps> = ({
           </nav>
 
           {/* Right Action */}
-          <div className="flex items-center space-x-2 sm:space-x-2.5">
+          <div className="flex items-center space-x-2 sm:space-x-2">
             
-            {/* Dyno Database Live Sync Button */}
+            {/* 1. Fast Live Real-Time Sync Button (< 300ms) */}
             <button
-              onClick={handleDynoSync}
+              onClick={handleSyncLive}
               disabled={dynoSyncStatus.isSyncing}
-              title={dynoSyncStatus.lastSyncTime ? `Dyno DB Connected. Last synced at ${dynoSyncStatus.lastSyncTime} (${dynoSyncStatus.syncedFilesCount} files)` : 'Sync with Dyno Dashboard Supabase DB'}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center space-x-1.5 shadow-xs ${
-                dynoSyncStatus.isSyncing 
-                  ? 'bg-amber-50 text-amber-700 border-amber-300 animate-pulse' 
-                  : dynoSyncStatus.error 
-                    ? 'bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100' 
-                    : 'bg-purple-50 hover:bg-purple-100 active:scale-98 text-purple-700 border-purple-200'
+              title="Fast Live Sync: Pulls real-time Uniware sync orders & today's files from Dyno DB (< 300ms)"
+              className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center space-x-1.5 shadow-xs ${
+                dynoSyncStatus.isSyncing && dynoSyncStatus.activeMode === 'live'
+                  ? 'bg-amber-50 text-amber-700 border-amber-300 animate-pulse'
+                  : 'bg-emerald-50 hover:bg-emerald-100 active:scale-98 text-emerald-800 border-emerald-200'
               }`}
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${dynoSyncStatus.isSyncing ? 'animate-spin text-amber-600' : 'text-purple-600'}`} />
+              <Zap className={`w-3.5 h-3.5 ${dynoSyncStatus.isSyncing && dynoSyncStatus.activeMode === 'live' ? 'animate-bounce text-amber-600' : 'text-emerald-600 fill-emerald-600'}`} />
               <span className="hidden sm:inline">
-                {dynoSyncStatus.isSyncing ? 'Syncing Dyno DB...' : dynoSyncStatus.lastSyncTime ? `Dyno Synced (${dynoSyncStatus.lastSyncTime})` : 'Sync Dyno DB'}
+                {dynoSyncStatus.isSyncing && dynoSyncStatus.activeMode === 'live' ? 'Live Syncing...' : 'Live Sync'}
               </span>
-              <span className="sm:hidden">
-                {dynoSyncStatus.isSyncing ? 'Syncing...' : 'Sync'}
-              </span>
+              <span className="sm:hidden">Live</span>
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
             </button>
 
-            <div className="hidden lg:flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-slate-100 border border-slate-200 text-xs text-slate-700 font-mono font-medium">
+            {/* 2. Recent 5-Day Files Sync Button (< 800ms) */}
+            <button
+              onClick={handleSyncRecent}
+              disabled={dynoSyncStatus.isSyncing}
+              title="Recent Sync: Checks for new sales files uploaded in the last 5 days (< 800ms)"
+              className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold border transition-all flex items-center space-x-1.5 shadow-xs ${
+                dynoSyncStatus.isSyncing && dynoSyncStatus.activeMode === 'recent'
+                  ? 'bg-amber-50 text-amber-700 border-amber-300 animate-pulse'
+                  : 'bg-purple-50 hover:bg-purple-100 active:scale-98 text-purple-700 border-purple-200'
+              }`}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${dynoSyncStatus.isSyncing && dynoSyncStatus.activeMode === 'recent' ? 'animate-spin text-amber-600' : 'text-purple-600'}`} />
+              <span className="hidden md:inline">
+                {dynoSyncStatus.isSyncing && dynoSyncStatus.activeMode === 'recent' ? 'Checking 5 Days...' : '5-Day Sync'}
+              </span>
+              <span className="md:hidden">5D</span>
+            </button>
+
+            <div className="hidden xl:flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-slate-100 border border-slate-200 text-xs text-slate-700 font-mono font-medium">
               <span>Records:</span>
               <strong className="text-slate-900">{totalRecordsCount}</strong>
             </div>
