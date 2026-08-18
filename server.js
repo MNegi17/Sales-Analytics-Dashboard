@@ -238,18 +238,18 @@ async function startServer() {
     console.log(`[SERVER] Sales Analytics Server running on port ${PORT}`);
   });
 
-  // Automatically trigger initial background sync from Dyno Supabase
-  fetchAndSyncDynoData()
+  // Fast startup sync: only fetch today's latest orders (< 2s)
+  fetchAndSyncDynoData('live')
     .then(async (syncResult) => {
       if (syncResult.success) {
-        await saveDailyStats(syncResult.stats, 'full-replace');
+        await saveDailyStats(syncResult.stats, 'replace');
         for (const m of syncResult.months) {
           await addCustomMonth(m);
         }
-        console.log(`[SERVER] Initial Dyno DB sync complete (${syncResult.stats.length} daily stats loaded).`);
+        console.log(`[SERVER] Startup fast live sync complete (${syncResult.stats.length} stats updated).`);
       }
     })
-    .catch(err => console.error('[SERVER] Initial Dyno DB sync warning:', err.message));
+    .catch(err => console.error('[SERVER] Startup live sync warning:', err.message));
 }
 
 startServer();
