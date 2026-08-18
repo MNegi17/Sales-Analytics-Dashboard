@@ -11,8 +11,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@types/compression": "^1.8.1",
     "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
+    "compression": "^1.8.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
