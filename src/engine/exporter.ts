@@ -250,7 +250,9 @@ function generateAmazonStructureA(
   stats: DailyCategoryStat[],
   parsedMY: ParsedExportMY
 ) {
-  const headerFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE699' } }; // Light orange/yellow
+  const headerFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE699' } }; // Light orange/amber
+  const subHeaderFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } }; // Soft grey
+  const totalFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } }; // Soft yellow
   const fontBold = { name: 'Calibri', size: 10, bold: true };
   const fontNormal = { name: 'Calibri', size: 10 };
   const thinBorder: Partial<ExcelJS.Borders> = {
@@ -260,39 +262,44 @@ function generateAmazonStructureA(
     right: { style: 'thin', color: { argb: 'FFD9D9D9' } }
   };
 
-  const r1: (string | null)[] = ['Category Level', null, null, null, null];
-  const r2: string[] = ['Category', 'Division', 'Amazon', 'Cocoblu', 'FBA'];
+  // Base Column Headers (Category, Division, Larger Size %, Smaller Size %)
+  const r1: (string | null)[] = ['Category Level', null, 'Size Ratio Percentage', null];
+  const r2: string[] = ['Category', 'Division', 'Larger Size %', 'Smaller Size %'];
 
+  // Add 4 columns for each day: Amazon, Cocoblu, FBA, Daily Total
   const dayColIndices: { day: number; amzCol: number; cocoCol: number; fbaCol: number; totalCol: number }[] = [];
-  let curCol = 6;
+  let curCol = 5;
 
   days.forEach(day => {
     const dow = getDayOfWeekName(day, parsedMY.year, parsedMY.monthIdx);
     r1.push(dow, null, null, null);
     
-    r2.push(`${day} ${parsedMY.shortMonth}.`, 'Amazon', 'Cocoblu', 'FBA');
+    r2.push('Amazon', 'Cocoblu', 'FBA', `${day} ${parsedMY.shortMonth}.`);
     dayColIndices.push({
       day,
       amzCol: curCol,
       cocoCol: curCol + 1,
       fbaCol: curCol + 2,
-      totalCol: curCol // First subcol
+      totalCol: curCol + 3
     });
     curCol += 4;
   });
 
-  r1.push('Grand Total', 'Share %');
-  r2.push('Grand Total', 'Share %');
+  // Summary Column Headers
+  r1.push('Grand Total', null, null, null, null, null, null);
+  r2.push('Grand Total', 'Share %', 'Target Unit', 'Achievement %', 'New Style', 'New Cont.', 'New Style Listed');
 
   ws.addRow(r1);
   ws.addRow(r2);
 
-  ws.getRow(1).font = fontBold;
-  ws.getRow(2).font = fontBold;
-  ws.getRow(1).eachCell(cell => { cell.fill = headerFill; cell.border = thinBorder; });
-  ws.getRow(2).eachCell(cell => { cell.fill = headerFill; cell.border = thinBorder; });
+  const row1 = ws.getRow(1);
+  const row2 = ws.getRow(2);
+  row1.font = fontBold;
+  row2.font = fontBold;
+  row1.eachCell(cell => { cell.fill = headerFill; cell.border = thinBorder; });
+  row2.eachCell(cell => { cell.fill = subHeaderFill; cell.border = thinBorder; });
 
-  // Map category data: category -> day -> subChannel -> count
+  // Map category data: category -> day -> { amz, coco, fba }
   const dataLookup = new Map<string, Map<number, { amz: number; coco: number; fba: number }>>();
 
   stats.forEach(s => {
@@ -302,9 +309,11 @@ function generateAmazonStructureA(
     if (!dayMap.has(s.day)) dayMap.set(s.day, { amz: 0, coco: 0, fba: 0 });
     
     const dRec = dayMap.get(s.day)!;
-    if (s.subChannel === 'FBA' || s.channelName.includes('FBA')) {
+    const ch = (s.channelName || '').toUpperCase();
+    const sub = (s.subChannel || '').toUpperCase();
+    if (sub === 'FBA' || ch.includes('FBA')) {
       dRec.fba += s.totalUnits;
-    } else if (s.subChannel === 'Cocoblu' || s.channelName.includes('COCOBLU')) {
+    } else if (sub === 'COCOBLU' || ch.includes('COCOBLU')) {
       dRec.coco += s.totalUnits;
     } else {
       dRec.amz += s.totalUnits;
@@ -312,28 +321,100 @@ function generateAmazonStructureA(
   });
 
   const categories = [...FOOTWEAR_CATEGORIES, ...APPAREL_CATEGORIES];
+  const mainCategoryRowStart = 3;
 
   categories.forEach((catDef, idx) => {
-    const rowNum = 3 + idx;
+    const rowNum = mainCategoryRowStart + idx;
     const catName = catDef.name;
     const rowVals: (string | number | null)[] = [
       catName,
       catDef.division,
-      null, null, null // Initial Amazon/Cocoblu/FBA summary cols
+      catDef.largerSizePct || 0,
+      catDef.smallerSizePct || 0
     ];
 
-    days.forEach(day => {
-      const dRec = dataLookup.get(catName)?.get(day);
-      rowVals.push(dRec?.amz || null, dRec?.coco || null, dRec?.fba || null, null);
+    dayColIndices.forEach(dc => {
+      const dRec = dataLookup.get(catName)?.get(dc.day);
+      const amzVal = dRec?.amz || 0;
+      const cocoVal = dRec?.coco || 0;
+      const fbaVal = dRec?.fba || 0;
+      rowVals.push(amzVal || null, cocoVal || null, fbaVal || null, null); // 4th column is total cell formula
     });
 
     const addedRow = ws.addRow(rowVals);
     addedRow.font = fontNormal;
     addedRow.eachCell(cell => { cell.border = thinBorder; });
+
+    // Format size ratio percentage cells
+    const largerCell = addedRow.getCell(3);
+    const smallerCell = addedRow.getCell(4);
+    largerCell.numFmt = '0.0%';
+    smallerCell.numFmt = '0.0%';
+
+    // Formulas for Date Total per row: =AmzCol + CocoCol + FbaCol
+    dayColIndices.forEach(dc => {
+      const amzColLetter = getColLetter(dc.amzCol);
+      const cocoColLetter = getColLetter(dc.cocoCol);
+      const fbaColLetter = getColLetter(dc.fbaCol);
+      const totCell = addedRow.getCell(dc.totalCol);
+      totCell.value = { formula: `=${amzColLetter}${rowNum}+${cocoColLetter}${rowNum}+${fbaColLetter}${rowNum}` };
+    });
+
+    // Grand Total formula for row: sum of daily totals
+    const totalColsLetters = dayColIndices.map(dc => `${getColLetter(dc.totalCol)}${rowNum}`).join('+');
+    const grandTotalColIdx = 5 + days.length * 4;
+    addedRow.getCell(grandTotalColIdx).value = { formula: `=${totalColsLetters}` };
+    
+    // Share % formula
+    const grandTotalLetter = getColLetter(grandTotalColIdx);
+    const grandTotalRow = mainCategoryRowStart + categories.length; // Bottom Grand Total row
+    const shareCell = addedRow.getCell(grandTotalColIdx + 1);
+    shareCell.value = { formula: `=${grandTotalLetter}${rowNum}/$${grandTotalLetter}$${grandTotalRow}` };
+    shareCell.numFmt = '0.0%';
   });
 
+  // Main Bottom Grand Total Row
+  const grandTotalRowIdx = mainCategoryRowStart + categories.length;
+  const lastCatRow = grandTotalRowIdx - 1;
+  const gtVals: (string | null)[] = ['Grand Total', null, null, null];
+  
+  dayColIndices.forEach(() => {
+    gtVals.push(null, null, null, null); // Will put formulas
+  });
+
+  // Summary trailing empty cells for formula insertion
+  gtVals.push(null, null, null, null, null, null, null);
+
+  const gtRow = ws.addRow(gtVals);
+  gtRow.font = fontBold;
+  gtRow.eachCell(cell => { cell.fill = totalFill; cell.border = thinBorder; });
+
+  // Bottom Grand Total Column Sum Formulas
+  dayColIndices.forEach(dc => {
+    const amzL = getColLetter(dc.amzCol);
+    const cocoL = getColLetter(dc.cocoCol);
+    const fbaL = getColLetter(dc.fbaCol);
+    const totL = getColLetter(dc.totalCol);
+
+    gtRow.getCell(dc.amzCol).value = { formula: `=SUM(${amzL}3:${amzL}${lastCatRow})` };
+    gtRow.getCell(dc.cocoCol).value = { formula: `=SUM(${cocoL}3:${cocoL}${lastCatRow})` };
+    gtRow.getCell(dc.fbaCol).value = { formula: `=SUM(${fbaL}3:${fbaL}${lastCatRow})` };
+    gtRow.getCell(dc.totalCol).value = { formula: `=SUM(${totL}3:${totL}${lastCatRow})` };
+  });
+
+  // Bottom Grand Total & Share % sum
+  const grandTotalColIdx = 5 + days.length * 4;
+  const gtColLetter = getColLetter(grandTotalColIdx);
+  gtRow.getCell(grandTotalColIdx).value = { formula: `=SUM(${gtColLetter}3:${gtColLetter}${lastCatRow})` };
+  const shareGtCell = gtRow.getCell(grandTotalColIdx + 1);
+  shareGtCell.value = 1;
+  shareGtCell.numFmt = '0.0%';
+
+  // Set column widths
   ws.getColumn(1).width = 22;
   ws.getColumn(2).width = 14;
+  ws.getColumn(3).width = 14;
+  ws.getColumn(4).width = 14;
 }
 
 // ============================================================================
