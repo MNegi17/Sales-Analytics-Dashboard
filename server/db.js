@@ -120,7 +120,7 @@ export async function getDailyStats() {
     dateKey: r.date_key,
     monthYearKey: r.month_year_key,
     year: r.year || (r.date_key ? parseInt(r.date_key.split('-')[0]) : 2026),
-    month: r.month || 'August',
+    month: r.month || (r.month_year_key ? r.month_year_key.split(' ')[0] : 'September'),
     day: r.date_num || (r.date_key ? parseInt(r.date_key.split('-')[2]) : 1),
     category: r.category,
     division: r.division,
