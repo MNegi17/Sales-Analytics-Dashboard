@@ -1,20 +1,20 @@
 import React, { useState } from 'react';
 import { useSalesStore } from '../../store/useSalesStore';
 import { generateMonthlyExcelWorkbook } from '../../engine/exporter';
-import { MARKETPLACE_CONFIGS } from '../../engine/constants';
+import { MARKETPLACE_CONFIGS, getCurrentISTMonthYear, getDefaultMonths } from '../../engine/constants';
 import { MarketplaceId } from '../../types';
 
 export const ExportModule: React.FC = () => {
-  const { dailyStats, myntraStyleCounts, selectedMonthYear } = useSalesStore();
+  const { dailyStats, myntraStyleCounts, selectedMonthYear, customMonths } = useSalesStore();
 
   const [selectedMp, setSelectedMp] = useState<MarketplaceId>('myntra');
-  const [targetMonthYear, setTargetMonthYear] = useState<string>(selectedMonthYear || 'August 2026');
+  const [targetMonthYear, setTargetMonthYear] = useState<string>(selectedMonthYear || getCurrentISTMonthYear());
   const [isExporting, setIsExporting] = useState(false);
   const [exportSuccessMsg, setExportSuccessMsg] = useState<string | null>(null);
 
-  const availableMonthsSet = new Set<string>();
-  availableMonthsSet.add('May 2026');
-  availableMonthsSet.add('August 2026');
+  const availableMonthsSet = new Set<string>(customMonths);
+  getDefaultMonths().forEach(m => availableMonthsSet.add(m));
+  availableMonthsSet.add(getCurrentISTMonthYear());
   dailyStats.forEach(s => availableMonthsSet.add(s.monthYearKey));
   const availableMonths = Array.from(availableMonthsSet);
 

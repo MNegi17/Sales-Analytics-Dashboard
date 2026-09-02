@@ -180,7 +180,11 @@ function parseDynoRowDate(row) {
   }
 
   if (day === null) day = 1;
-  if (monthIdx === null) monthIdx = 7; // August default
+  if (monthIdx === null) {
+    const istNow = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+    monthIdx = istNow.getUTCMonth();
+    year = istNow.getUTCFullYear();
+  }
 
   const monthName = MONTH_NAMES[monthIdx];
   const formattedMonth = String(monthIdx + 1).padStart(2, '0');

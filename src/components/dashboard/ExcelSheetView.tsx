@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DailyCategoryStat, MarketplaceId } from '../../types';
-import { MARKETPLACE_CONFIGS, MARKETPLACE_ORDER, FOOTWEAR_CATEGORIES, APPAREL_CATEGORIES } from '../../engine/constants';
+import { MARKETPLACE_CONFIGS, MARKETPLACE_ORDER, FOOTWEAR_CATEGORIES, APPAREL_CATEGORIES, getCurrentISTMonthYear, getDefaultMonths } from '../../engine/constants';
 import { generateMonthlyExcelWorkbook } from '../../engine/exporter';
 import { useSalesStore } from '../../store/useSalesStore';
 import {
@@ -66,22 +66,30 @@ interface ParsedMonthYear {
 }
 
 function parseMonthYear(monthYearStr: string): ParsedMonthYear {
-  const parts = monthYearStr.trim().split(/\s+/);
-  const mName = parts[0] || 'August';
-  const year = parseInt(parts[1], 10) || 2026;
+  const currentIST = getCurrentISTMonthYear();
+  const fallbackParts = currentIST.split(' ');
+  const defaultMonthName = fallbackParts[0] || 'September';
+  const defaultYear = parseInt(fallbackParts[1], 10) || 2026;
+
+  const parts = (monthYearStr || currentIST).trim().split(/\s+/);
+  const mName = parts[0] || defaultMonthName;
+  const year = parseInt(parts[1], 10) || defaultYear;
 
   let mIdx = MONTH_NAMES.findIndex(m => m.toLowerCase() === mName.toLowerCase());
   if (mIdx === -1) {
     mIdx = SHORT_MONTH_NAMES.findIndex(m => m.toLowerCase() === mName.toLowerCase());
   }
-  if (mIdx === -1) mIdx = 7; // Default August
+  if (mIdx === -1) {
+    mIdx = MONTH_NAMES.findIndex(m => m.toLowerCase() === defaultMonthName.toLowerCase());
+  }
+  if (mIdx === -1) mIdx = 8; // Default September
 
   const daysInMonth = new Date(year, mIdx + 1, 0).getDate();
 
   return {
     monthIndex: mIdx,
-    monthName: MONTH_NAMES[mIdx],
-    shortMonth: SHORT_MONTH_NAMES[mIdx],
+    monthName: MONTH_NAMES[mIdx] || defaultMonthName,
+    shortMonth: SHORT_MONTH_NAMES[mIdx] || 'Sept',
     year,
     daysInMonth
   };
@@ -194,17 +202,16 @@ export const ExcelSheetView: React.FC<ExcelSheetViewProps> = ({
 
   // Add New Month Modal State
   const [isAddMonthOpen, setIsAddMonthOpen] = useState(false);
-  const [newMonthSelect, setNewMonthSelect] = useState('July');
-  const [newYearSelect, setNewYearSelect] = useState('2026');
+  const currentISTParts = getCurrentISTMonthYear().split(' ');
+  const [newMonthSelect, setNewMonthSelect] = useState(currentISTParts[0] || 'September');
+  const [newYearSelect, setNewYearSelect] = useState(currentISTParts[1] || '2026');
 
   const currentConfig = MARKETPLACE_CONFIGS[activeMarketplace];
 
   // Combined list of months
   const availableMonthsSet = new Set<string>(customMonths);
-  availableMonthsSet.add('May 2026');
-  availableMonthsSet.add('June 2026');
-  availableMonthsSet.add('July 2026');
-  availableMonthsSet.add('August 2026');
+  getDefaultMonths().forEach(m => availableMonthsSet.add(m));
+  availableMonthsSet.add(getCurrentISTMonthYear());
   stats.forEach(s => availableMonthsSet.add(s.monthYearKey));
   const availableMonths = Array.from(availableMonthsSet);
 

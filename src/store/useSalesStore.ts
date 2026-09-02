@@ -9,7 +9,7 @@ import {
 import { parseSalesExcelFile } from '../engine/excel-parser';
 import { aggregateSalesData } from '../engine/processor';
 import { validateSalesData } from '../engine/validator';
-import { FOOTWEAR_CATEGORIES, APPAREL_CATEGORIES } from '../engine/constants';
+import { FOOTWEAR_CATEGORIES, APPAREL_CATEGORIES, getCurrentISTMonthYear, getDefaultMonths } from '../engine/constants';
 
 interface SalesStoreState {
   // Data
@@ -68,7 +68,7 @@ export const useSalesStore = create<SalesStoreState>((set, get) => ({
   dailyStats: [],
   uploadLogs: [],
   myntraStyleCounts: initialStyleCounts,
-  customMonths: ['May 2026', 'June 2026', 'July 2026', 'August 2026'],
+  customMonths: getDefaultMonths(),
   isLoadingInitial: false,
   
   dynoSyncStatus: {
@@ -87,7 +87,7 @@ export const useSalesStore = create<SalesStoreState>((set, get) => ({
   pendingParsedStats: null,
   pendingLog: null,
 
-  selectedMonthYear: 'August 2026',
+  selectedMonthYear: getCurrentISTMonthYear(),
   selectedMarketplace: 'ALL',
   searchQuery: '',
 
@@ -121,7 +121,8 @@ export const useSalesStore = create<SalesStoreState>((set, get) => ({
       }).then(r => r.json());
 
       if (res?.success && Array.isArray(res.stats)) {
-        const updatedMonths = Array.from(new Set([...get().customMonths, ...(res.months || [])]));
+        const currentISTMonth = getCurrentISTMonthYear();
+        const updatedMonths = Array.from(new Set([...get().customMonths, ...(res.months || []), currentISTMonth]));
         const latestMonth = res.stats.length > 0 ? res.stats[res.stats.length - 1].monthYearKey : get().selectedMonthYear;
 
         // Refresh upload logs as well
@@ -134,7 +135,7 @@ export const useSalesStore = create<SalesStoreState>((set, get) => ({
           dailyStats: res.stats,
           uploadLogs,
           customMonths: updatedMonths,
-          selectedMonthYear: updatedMonths.includes('August 2026') ? 'August 2026' : (latestMonth || get().selectedMonthYear),
+          selectedMonthYear: updatedMonths.includes(currentISTMonth) ? currentISTMonth : (latestMonth || currentISTMonth),
           dynoSyncStatus: {
             isSyncing: false,
             activeMode: null,
@@ -179,9 +180,14 @@ export const useSalesStore = create<SalesStoreState>((set, get) => ({
       const dailyStats = statsRes?.success ? statsRes.stats : get().dailyStats;
       const uploadLogs = logsRes?.success ? logsRes.logs : get().uploadLogs;
       const myntraStyleCounts = stylesRes?.success ? { ...initialStyleCounts, ...stylesRes.counts } : get().myntraStyleCounts;
-      const customMonths = monthsRes?.success ? monthsRes.months : get().customMonths;
-
-      const latestMonth = dailyStats.length > 0 ? dailyStats[dailyStats.length - 1].monthYearKey : get().selectedMonthYear;
+      
+      const currentISTMonth = getCurrentISTMonthYear();
+      const rawMonths = monthsRes?.success && Array.isArray(monthsRes.months) ? monthsRes.months : get().customMonths;
+      const customMonths = Array.from(new Set([
+        ...getDefaultMonths(),
+        ...(rawMonths || []),
+        currentISTMonth
+      ]));
       
       const dynoStatus = dynoStatusRes?.success && dynoStatusRes.status ? {
         isSyncing: dynoStatusRes.status.status === 'SYNCING',
@@ -197,7 +203,7 @@ export const useSalesStore = create<SalesStoreState>((set, get) => ({
         uploadLogs,
         myntraStyleCounts,
         customMonths,
-        selectedMonthYear: customMonths.includes('August 2026') ? 'August 2026' : (customMonths.includes(latestMonth) ? latestMonth : customMonths[customMonths.length - 1] || 'August 2026'),
+        selectedMonthYear: customMonths.includes(currentISTMonth) ? currentISTMonth : (customMonths[customMonths.length - 1] || currentISTMonth),
         dynoSyncStatus: dynoStatus,
         isLoadingInitial: false
       });
@@ -430,7 +436,8 @@ export const useSalesStore = create<SalesStoreState>((set, get) => ({
       dailyStats: [],
       uploadLogs: [],
       myntraStyleCounts: initialStyleCounts,
-      customMonths: ['May 2026', 'June 2026', 'July 2026', 'August 2026'],
+      customMonths: getDefaultMonths(),
+      selectedMonthYear: getCurrentISTMonthYear(),
       activeConflict: null,
       pendingParsedStats: null,
       pendingLog: null

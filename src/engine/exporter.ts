@@ -2,9 +2,52 @@ import ExcelJS from 'exceljs';
 import { DailyCategoryStat, MarketplaceId, MyntraStyleCount } from '../types';
 import { MARKETPLACE_CONFIGS, FOOTWEAR_CATEGORIES, APPAREL_CATEGORIES } from './constants';
 
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
+const SHORT_MONTH_NAMES = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'June',
+  'July', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'
+];
+
+interface ParsedExportMY {
+  year: number;
+  monthIdx: number;
+  monthName: string;
+  shortMonth: string;
+  monthNumberStr: string;
+  daysInMonth: number;
+}
+
+function parseExportMonthYear(monthYearKey: string): ParsedExportMY {
+  const parts = monthYearKey.trim().split(/\s+/);
+  const mName = parts[0] || 'September';
+  const year = parseInt(parts[1], 10) || 2026;
+
+  let mIdx = MONTH_NAMES.findIndex(m => m.toLowerCase() === mName.toLowerCase());
+  if (mIdx === -1) {
+    mIdx = SHORT_MONTH_NAMES.findIndex(m => m.toLowerCase() === mName.toLowerCase());
+  }
+  if (mIdx === -1) mIdx = 8; // September
+
+  const daysInMonth = new Date(year, mIdx + 1, 0).getDate();
+  const monthNumberStr = String(mIdx + 1).padStart(2, '0');
+
+  return {
+    year,
+    monthIdx: mIdx,
+    monthName: MONTH_NAMES[mIdx],
+    shortMonth: SHORT_MONTH_NAMES[mIdx],
+    monthNumberStr,
+    daysInMonth
+  };
+}
+
 export async function generateMonthlyExcelWorkbook(
   marketplaceId: MarketplaceId,
-  monthYearKey: string, // e.g. "August 2026"
+  monthYearKey: string, // e.g. "September 2026"
   monthlyStats: DailyCategoryStat[],
   myntraStyleCounts: Record<string, number> = {}
 ): Promise<ArrayBuffer> {
@@ -15,33 +58,24 @@ export async function generateMonthlyExcelWorkbook(
     views: [{ showGridLines: true }]
   });
 
-  // Extract all unique dates for this month present in stats or complete 1..31 days
-  const dateMap = new Map<number, string>(); // day -> YYYY-MM-DD
-  monthlyStats.forEach(s => {
-    if (s.marketplaceId === marketplaceId) {
-      dateMap.set(s.day, s.dateKey);
-    }
-  });
+  const parsedMY = parseExportMonthYear(monthYearKey);
 
-  // If no stats, default to days 1 to 31
-  let daysInMonth = Array.from(dateMap.keys()).sort((a, b) => a - b);
-  if (daysInMonth.length === 0) {
-    daysInMonth = Array.from({ length: 31 }, (_, i) => i + 1);
-  }
+  // Generate full range of days in the month (e.g. 1..30 for Sept, 1..31 for Aug)
+  const daysInMonth = Array.from({ length: parsedMY.daysInMonth }, (_, i) => i + 1);
 
   if (config.structure === 'STRUCTURE_A' && marketplaceId === 'myntra') {
-    generateMyntraStructureA(worksheet, daysInMonth, monthlyStats, myntraStyleCounts);
+    generateMyntraStructureA(worksheet, daysInMonth, monthlyStats, myntraStyleCounts, parsedMY);
   } else if (config.structure === 'STRUCTURE_A' && marketplaceId === 'amazon') {
-    generateAmazonStructureA(worksheet, daysInMonth, monthlyStats);
+    generateAmazonStructureA(worksheet, daysInMonth, monthlyStats, parsedMY);
   } else {
-    generateStructureB(worksheet, daysInMonth, monthlyStats, config.name);
+    generateStructureB(worksheet, daysInMonth, monthlyStats, config.name, parsedMY);
   }
 
   return await workbook.xlsx.writeBuffer();
 }
 
 /** Helper: Get day of week name (Saturday, Sunday, Monday...) */
-function getDayOfWeekName(day: number, year: number = 2026, monthIdx: number = 7): string {
+function getDayOfWeekName(day: number, year: number, monthIdx: number): string {
   const d = new Date(year, monthIdx, day);
   return d.toLocaleDateString('en-US', { weekday: 'long' });
 }
@@ -53,7 +87,8 @@ function generateMyntraStructureA(
   ws: ExcelJS.Worksheet,
   days: number[],
   stats: DailyCategoryStat[],
-  styleCounts: Record<string, number>
+  styleCounts: Record<string, number>,
+  parsedMY: ParsedExportMY
 ) {
   // Styles
   const headerFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' } }; // Light green
@@ -77,11 +112,11 @@ function generateMyntraStructureA(
   let curCol = 6;
 
   days.forEach(day => {
-    const dow = getDayOfWeekName(day);
+    const dow = getDayOfWeekName(day, parsedMY.year, parsedMY.monthIdx);
     r1.push(dow, null, null);
     
     const dayStr = String(day).padStart(2, '0');
-    r2.push(`${dayStr}-07-2026 PPMP`, `${dayStr}-07-2026 SJIT`, `${dayStr} Aug.`);
+    r2.push(`${dayStr}-${parsedMY.monthNumberStr}-${parsedMY.year} PPMP`, `${dayStr}-${parsedMY.monthNumberStr}-${parsedMY.year} SJIT`, `${dayStr} ${parsedMY.shortMonth}.`);
     
     dayColIndices.push({
       day,
@@ -212,7 +247,8 @@ function generateMyntraStructureA(
 function generateAmazonStructureA(
   ws: ExcelJS.Worksheet,
   days: number[],
-  stats: DailyCategoryStat[]
+  stats: DailyCategoryStat[],
+  parsedMY: ParsedExportMY
 ) {
   const headerFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE699' } }; // Light orange/yellow
   const fontBold = { name: 'Calibri', size: 10, bold: true };
@@ -231,10 +267,10 @@ function generateAmazonStructureA(
   let curCol = 6;
 
   days.forEach(day => {
-    const dow = getDayOfWeekName(day);
+    const dow = getDayOfWeekName(day, parsedMY.year, parsedMY.monthIdx);
     r1.push(dow, null, null, null);
     
-    r2.push(`${day} August.`, 'Amazon', 'Cocoblu', 'FBA');
+    r2.push(`${day} ${parsedMY.shortMonth}.`, 'Amazon', 'Cocoblu', 'FBA');
     dayColIndices.push({
       day,
       amzCol: curCol,
@@ -307,7 +343,8 @@ function generateStructureB(
   ws: ExcelJS.Worksheet,
   days: number[],
   stats: DailyCategoryStat[],
-  marketplaceName: string
+  marketplaceName: string,
+  parsedMY: ParsedExportMY
 ) {
   const headerFill: ExcelJS.Fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } }; // Soft blue header
   const fontBold = { name: 'Calibri', size: 10, bold: true };
@@ -326,9 +363,9 @@ function generateStructureB(
   let curCol = 5;
 
   days.forEach(day => {
-    const dow = getDayOfWeekName(day);
+    const dow = getDayOfWeekName(day, parsedMY.year, parsedMY.monthIdx);
     r1.push(dow);
-    r2.push(`${day} August.`);
+    r2.push(`${day} ${parsedMY.shortMonth}.`);
     dayColMap.set(day, curCol);
     curCol++;
   });

@@ -4,12 +4,28 @@ const { Pool } = pkg;
 const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
 let pool = null;
 
+export function getCurrentISTMonthYear() {
+  const now = new Date();
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    month: 'long',
+    year: 'numeric'
+  }).format(now);
+}
+
+export function getDefaultMonths() {
+  const current = getCurrentISTMonthYear();
+  const base = ['May 2026', 'June 2026', 'July 2026', 'August 2026', 'September 2026'];
+  if (!base.includes(current)) base.push(current);
+  return base;
+}
+
 // Memory storage fallback when PostgreSQL connection string is not present
 const inMemoryDb = {
   dailyStats: [],
   uploadLogs: [],
   styleCounts: {},
-  customMonths: ['May 2026', 'June 2026', 'July 2026', 'August 2026']
+  customMonths: getDefaultMonths()
 };
 
 export const isPostgres = !!connectionString;
@@ -275,9 +291,11 @@ export async function setStyleCount(category, count) {
 
 // Queries for Custom Months
 export async function getCustomMonths() {
-  if (!isPostgres) return inMemoryDb.customMonths;
+  const defaultMonths = getDefaultMonths();
+  if (!isPostgres) {
+    return Array.from(new Set([...defaultMonths, ...inMemoryDb.customMonths]));
+  }
   const res = await pool.query('SELECT month_year FROM custom_months ORDER BY created_at ASC');
-  const defaultMonths = ['May 2026', 'June 2026', 'July 2026', 'August 2026'];
   const dbMonths = res.rows.map(r => r.month_year);
   return Array.from(new Set([...defaultMonths, ...dbMonths]));
 }
@@ -301,7 +319,7 @@ export async function resetAllDbData() {
     inMemoryDb.dailyStats = [];
     inMemoryDb.uploadLogs = [];
     inMemoryDb.styleCounts = {};
-    inMemoryDb.customMonths = ['May 2026', 'June 2026', 'July 2026', 'August 2026'];
+    inMemoryDb.customMonths = getDefaultMonths();
     return;
   }
 

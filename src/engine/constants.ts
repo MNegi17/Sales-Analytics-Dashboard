@@ -134,3 +134,29 @@ export const APPAREL_CATEGORIES: CategoryDefinition[] = [
 ];
 
 export const ALL_CATEGORIES = [...FOOTWEAR_CATEGORIES, ...APPAREL_CATEGORIES];
+
+/**
+ * Returns current Month and Year based on India Standard Time (IST / UTC+5:30)
+ * e.g. "September 2026"
+ */
+export function getCurrentISTMonthYear(): string {
+  const now = new Date();
+  const options: Intl.DateTimeFormatOptions = {
+    timeZone: 'Asia/Kolkata',
+    month: 'long',
+    year: 'numeric'
+  };
+  return new Intl.DateTimeFormat('en-US', options).format(now);
+}
+
+/**
+ * Returns a list of default recent months including historical reference months and current IST month
+ */
+export function getDefaultMonths(): string[] {
+  const current = getCurrentISTMonthYear();
+  const baseMonths = ['May 2026', 'June 2026', 'July 2026', 'August 2026', 'September 2026'];
+  if (!baseMonths.includes(current)) {
+    baseMonths.push(current);
+  }
+  return baseMonths;
+}
