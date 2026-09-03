@@ -288,9 +288,9 @@ export async function fetchAndSyncDynoData(mode = 'full') {
     let queryUrl = `${SUPABASE_URL}/rest/v1/uploaded_files?select=id,name,upload_date,record_count,data&order=upload_date.desc`;
 
     if (mode === 'live') {
-      queryUrl += `&limit=15`;
+      queryUrl += `&limit=50`;
     } else if (mode === 'recent') {
-      queryUrl += `&limit=35`;
+      queryUrl += `&limit=100`;
     }
 
     const filesRes = await fetch(queryUrl, {

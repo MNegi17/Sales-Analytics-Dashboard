@@ -135,8 +135,8 @@ export async function saveDailyStats(stats, resolution = 'replace') {
     if (resolution === 'full-replace') {
       inMemoryDb.dailyStats = [...stats];
     } else if (resolution === 'replace') {
-      const keysToReplace = new Set(stats.map(s => `${s.marketplaceId}_${s.dateKey}_${s.subChannel || ''}_${s.category}`));
-      inMemoryDb.dailyStats = inMemoryDb.dailyStats.filter(s => !keysToReplace.has(`${s.marketplaceId}_${s.dateKey}_${s.subChannel || ''}_${s.category}`));
+      const pairsToReplace = new Set(stats.map(s => `${s.marketplaceId}_${s.dateKey}`));
+      inMemoryDb.dailyStats = inMemoryDb.dailyStats.filter(s => !pairsToReplace.has(`${s.marketplaceId}_${s.dateKey}`));
       inMemoryDb.dailyStats.push(...stats);
     } else if (resolution === 'merge') {
       const map = new Map(inMemoryDb.dailyStats.map(s => [`${s.marketplaceId}_${s.dateKey}_${s.subChannel || ''}_${s.category}`, s]));
@@ -163,6 +163,12 @@ export async function saveDailyStats(stats, resolution = 'replace') {
 
     if (resolution === 'full-replace') {
       await client.query('TRUNCATE TABLE daily_stats RESTART IDENTITY');
+    } else if (resolution === 'replace') {
+      const pairs = Array.from(new Set(stats.map(s => `${s.marketplaceId}:::${s.dateKey}`)));
+      for (const pair of pairs) {
+        const [mpId, dKey] = pair.split(':::');
+        await client.query('DELETE FROM daily_stats WHERE marketplace_id = $1 AND date_key = $2', [mpId, dKey]);
+      }
     }
 
     for (const s of stats) {
